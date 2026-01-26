@@ -1,9 +1,9 @@
 import type { SparkPlugin } from './types/plugin';
-import QuickNotesPlugin from '@/domains/quick-notes';
+import AreasPlugin from '@/domains/areas-of-interest';
 import FeedAggregatorPlugin from '@/domains/feed-aggregator';
 
 export const activePlugins: SparkPlugin[] = [
-  QuickNotesPlugin,
+  AreasPlugin,
   FeedAggregatorPlugin,
 ];
 

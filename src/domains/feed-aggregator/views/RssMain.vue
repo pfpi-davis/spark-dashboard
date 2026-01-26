@@ -1,11 +1,28 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useFeedStore } from '../store';
 import { useAnalysisStore } from '@/domains/analysis-engine/store';
 import SourceManager from '../components/SourceManager.vue';
+import AddToAreaModal from '@/domains/areas-of-interest/components/AddToAreaModal.vue';
 
 const feedStore = useFeedStore();
 const analysisStore = useAnalysisStore();
+const isSaveModalOpen = ref(false);
+const itemToSave = ref<any>(null);
+
+function openSaveModal(item: any) {
+    // Determine if we are saving just the article or a Spark analysis
+    const hasSpark = !!item.nativeData?.aiSummary;
+
+    itemToSave.value = {
+        title: item.title,
+        // If it has a Spark, save as 'spark' type, otherwise just 'rss'
+        type: hasSpark ? 'spark' : 'rss',
+        sourceUrl: item.url,
+        content: hasSpark ? item.nativeData.aiSummary : item.summary // Save the rich data if available
+    };
+    isSaveModalOpen.value = true;
+}
 
 onMounted(() => {
     // FIX: Check 'subscriptions' instead of 'sources'
@@ -47,6 +64,11 @@ onMounted(() => {
                     </h3>
 
                     <p class="summary">{{ item.summary }}</p>
+                    <div class="actions-row">
+                        <button class="icon-btn save-btn" @click="openSaveModal(item)" title="Save to Area">
+                            💾
+                        </button>
+                    </div>
 
                     <div class="spark-area">
 
@@ -78,6 +100,7 @@ onMounted(() => {
             </div>
         </main>
     </div>
+    <AddToAreaModal :is-open="isSaveModalOpen" :item-data="itemToSave" @close="isSaveModalOpen = false" />
 </template>
 
 <style scoped>
@@ -231,5 +254,23 @@ onMounted(() => {
     border-radius: 4px;
     font-size: 0.9rem;
     color: #555;
+}
+
+.save-btn {
+    font-size: 1.2rem;
+    background: none;
+    border: none;
+    cursor: pointer;
+}
+
+.save-btn:hover {
+    transform: scale(1.1);
+}
+
+.actions-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-top: 1rem;
 }
 </style>

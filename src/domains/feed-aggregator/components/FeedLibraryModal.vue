@@ -16,11 +16,47 @@ onMounted(() => {
 <template>
     <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
         <div class="modal-content">
+
             <header>
                 <h3>📚 Community Library</h3>
                 <button class="close-btn" @click="emit('close')">×</button>
             </header>
+            <div class="feed-list">
+                <div class="section-title">✨ Featured Sources</div>
+                <div class="library-item featured">
+                    <div class="info">
+                        <div class="url">The Guardian (Environment)</div>
+                        <div class="desc">Official API Feed</div>
+                    </div>
+                    <button class="add-btn"
+                        @click="store.subscribeFromLibrary('https://www.theguardian.com/us/environment')"
+                        :disabled="store.subscriptions.some(s => s.url.includes('theguardian.com'))">
+                        {{store.subscriptions.some(s => s.url.includes('theguardian.com')) ? '✓ Added' : '+ Add'}}
+                    </button>
+                </div>
+                <div class="library-item featured">
+                    <div class="info">
+                        <div class="url">New York Times (Climate)</div>
+                        <div class="desc">Official API Feed</div>
+                    </div>
+                    <button class="add-btn"
+                        @click="store.subscribeFromLibrary('https://www.nytimes.com/section/climate')"
+                        :disabled="store.subscriptions.some(s => s.url.includes('nytimes.com'))">
+                        {{store.subscriptions.some(s => s.url.includes('nytimes.com')) ? '✓ Added' : '+ Add'}}
+                    </button>
+                </div>
 
+                <div class="library-item featured">
+                    <div class="info">
+                        <div class="url">US Congress (Bioenergy Filter)</div>
+                        <div class="desc">Filtered Bills & Resolutions</div>
+                    </div>
+                    <button class="add-btn" @click="store.subscribeFromLibrary('https://www.congress.gov')"
+                        :disabled="store.subscriptions.some(s => s.url.includes('congress.gov'))">
+                        {{store.subscriptions.some(s => s.url.includes('congress.gov')) ? '✓ Added' : '+ Add'}}
+                    </button>
+                </div>
+            </div>
             <div class="feed-list">
                 <div v-if="store.publicFeeds.length === 0" class="loading">
                     {{ store.isLoading ? 'Loading...' : 'Library is empty.' }}

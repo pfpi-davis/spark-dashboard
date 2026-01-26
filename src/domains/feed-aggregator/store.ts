@@ -19,6 +19,7 @@ import { govAdapter } from './adapters/govAdapter';
 import { newsAdapter } from './adapters/newsAdapter';
 import type { Resource } from '@/core/types/domain';
 import type { FeedSubscription, PublicFeed } from './types';
+import { congressAdapter } from './adapters/congressAdapter';
 
 export const useFeedStore = defineStore('feed-aggregator', () => {
   const db = getFirestore();
@@ -157,6 +158,7 @@ async function subscribeFromLibrary(url: string) {
       try {
         if (newsAdapter.validateUrl(sub.url)) return await newsAdapter.fetch(sub.url);
         if (govAdapter.validateUrl(sub.url)) return await govAdapter.fetch(sub.url);
+        if (congressAdapter.validateUrl(sub.url)) return await congressAdapter.fetch(sub.url); 
         return await rssAdapter.fetch(sub.url);
       } catch (err) {
         console.error(`Failed to fetch ${sub.url}`, err);
