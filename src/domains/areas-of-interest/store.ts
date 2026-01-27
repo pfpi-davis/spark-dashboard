@@ -26,28 +26,36 @@ export const useAreasStore = defineStore('areas-of-interest', () => {
   const selectedAreaId = ref<string | null>(null)
 
   // --- GETTER: Tree Structure ---
+  // --- GETTER: Tree Structure ---
+  // --- GETTER: Tree Structure ---
   const areaTree = computed(() => {
-    const map: Record<string, Area> = {}
-    const roots: Area[] = []
+    // 1. Define a strictly typed Node
+    type AreaNode = Area & { children: Area[] }
 
-    // 1. Initialize Map
+    const map: Record<string, AreaNode> = {}
+    const roots: AreaNode[] = []
+
+    // 2. Initialize Map
     areas.value.forEach((a) => {
-      // Create a shallow copy with a children array
       map[a.id] = { ...a, children: [] }
     })
 
-    // 2. Build Tree
+    // 3. Build Tree
     areas.value.forEach((a) => {
       const node = map[a.id]
-      if (a.parentId && map[a.parentId]) {
-        map[a.parentId].children?.push(node)
+      if (!node) return
+
+      // FIX: Capture parentId to a const so TS knows it won't change
+      const pid = a.parentId
+
+      // Check existence using the const 'pid'
+      if (pid && map[pid]) {
+        map[pid].children.push(node)
       } else {
         roots.push(node)
       }
     })
 
-    // 3. Sort (Optional: Alphabetical)
-    // A simple recursive sort could go here, but flat sort in watcher helps
     return roots
   })
 

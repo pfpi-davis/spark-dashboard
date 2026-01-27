@@ -3,20 +3,22 @@ import { ref, computed } from 'vue';
 import { useAreasStore } from '../store';
 import { useAuthStore } from '@/core/stores/auth';
 import { useAnalysisStore } from '@/domains/analysis-engine/store';
+import AreaTreeItem from '../components/AreaTreeItem.vue';
 
 // Modals
 import EditTagsModal from '../components/EditTagsModal.vue';
 import ViewContentModal from '../components/ViewContentModal.vue';
 import MoveItemModal from '../components/MoveItemModal.vue';
 import EditContentModal from '../components/EditContentModal.vue';
-import AreaFormModal from '../components/AreaFormModal.vue'; // <--- NEW IMPORT
-import AreaTreeItem from '../components/AreaTreeItem.vue';
+import AreaFormModal from '../components/AreaFormModal.vue';
+import AddItemModal from '../components/AddItemModal.vue';
 
 const store = useAreasStore();
 const auth = useAuthStore();
 const analysisStore = useAnalysisStore();
 
 const activeFilter = ref('');
+const searchQuery = ref(''); // <--- NEW STATE
 
 // --- MODAL STATE ---
 const isTagModalOpen = ref(false);
@@ -31,20 +33,25 @@ const itemToMove = ref<any>(null);
 const isEditContentModalOpen = ref(false);
 const itemToEditContent = ref<any>(null);
 
-// NEW: Area Form Modal State
 const isAreaModalOpen = ref(false);
 const areaIdToEdit = ref<string | null>(null);
+
+const isAddItemModalOpen = ref(false);
 
 // --- ACTIONS ---
 
 function openCreateAreaModal() {
-    areaIdToEdit.value = null; // null = Create Mode
+    areaIdToEdit.value = null;
     isAreaModalOpen.value = true;
 }
 
 function openEditAreaModal(id: string) {
-    areaIdToEdit.value = id;   // string = Edit Mode
+    areaIdToEdit.value = id;
     isAreaModalOpen.value = true;
+}
+
+function openAddItemModal() {
+    isAddItemModalOpen.value = true;
 }
 
 function openViewModal(item: any) {
@@ -96,11 +103,29 @@ const currentArea = computed(() => {
     return store.areas.find(a => a.id === store.selectedAreaId);
 });
 
+// UPDATED: Filter by Tag AND Search Query
 const filteredItems = computed(() => {
-    if (!activeFilter.value) return store.activeItems;
-    return store.activeItems.filter(item =>
-        item.tags?.includes(activeFilter.value)
-    );
+    let items = store.activeItems;
+
+    // 1. Filter by Tag (if selected)
+    if (activeFilter.value) {
+        items = items.filter(item => item.tags?.includes(activeFilter.value));
+    }
+
+    // 2. Filter by Search Query (if typed)
+    if (searchQuery.value.trim()) {
+        const q = searchQuery.value.toLowerCase();
+        items = items.filter(item => {
+            const inTitle = item.title.toLowerCase().includes(q);
+            const inContent = (typeof item.content === 'string') && item.content.toLowerCase().includes(q);
+            // Also check tags so searching "biomass" finds items tagged #biomass
+            const inTags = item.tags?.some(t => t.toLowerCase().includes(q));
+
+            return inTitle || inContent || inTags;
+        });
+    }
+
+    return items;
 });
 
 const availableTags = computed(() => {
@@ -114,7 +139,7 @@ const availableTags = computed(() => {
         <aside class="areas-sidebar">
             <div class="sidebar-header">
                 <h3>📂 My Areas</h3>
-                <button class="add-area-btn" @click="openCreateAreaModal" title="New Area">+</button>
+                <button class="add-area-btn" @click="openCreateAreaModal" title="New Folder">+</button>
             </div>
 
             <ul>
@@ -130,7 +155,7 @@ const availableTags = computed(() => {
                 <div class="placeholder-content">
                     <h3>Welcome to your Knowledge Base</h3>
                     <p>Select a folder on the left or create a new one.</p>
-                    <button class="primary-btn" @click="openCreateAreaModal">Create First Area</button>
+                    <button class="primary-btn" @click="openCreateAreaModal">Create First Folder</button>
                 </div>
             </div>
 
@@ -139,7 +164,7 @@ const availableTags = computed(() => {
                     <div class="title-row">
                         <h2>{{ currentArea?.name }}</h2>
                         <button class="icon-btn edit-area-btn" @click="openEditAreaModal(store.selectedAreaId!)"
-                            title="Edit Name & Desc">
+                            title="Edit Folder">
                             ✏️
                         </button>
                     </div>
@@ -147,20 +172,36 @@ const availableTags = computed(() => {
                 </div>
 
                 <div class="items-header">
-                    <div class="filter-bar" v-if="availableTags.length > 0">
-                        <span>Filter:</span>
-                        <button class="tag-pill" :class="{ active: activeFilter === '' }" @click="activeFilter = ''">
-                            All
-                        </button>
-                        <button v-for="tag in availableTags" :key="tag" class="tag-pill"
-                            :class="{ active: activeFilter === tag }" @click="activeFilter = tag">
-                            #{{ tag }}
+                    <div class="header-left">
+                        <h3>Items</h3>
+                        <button class="primary-btn sm-btn" @click="openAddItemModal">
+                            + Add Entry
                         </button>
                     </div>
 
-                    <button @click="store.deleteArea(store.selectedAreaId!)" class="delete-btn text-danger">
-                        Delete Folder
-                    </button>
+                    <div class="header-right">
+                        <div class="search-wrapper">
+                            <span class="search-icon">🔍</span>
+                            <input v-model="searchQuery" placeholder="Search items..." class="search-input" />
+                            <button v-if="searchQuery" class="clear-btn" @click="searchQuery = ''">×</button>
+                        </div>
+
+                        <div class="filter-bar" v-if="availableTags.length > 0">
+                            <span>Filter:</span>
+                            <button class="tag-pill" :class="{ active: activeFilter === '' }"
+                                @click="activeFilter = ''">
+                                All
+                            </button>
+                            <button v-for="tag in availableTags" :key="tag" class="tag-pill"
+                                :class="{ active: activeFilter === tag }" @click="activeFilter = tag">
+                                #{{ tag }}
+                            </button>
+                        </div>
+
+                        <button @click="store.deleteArea(store.selectedAreaId!)" class="delete-btn text-danger">
+                            Delete Folder
+                        </button>
+                    </div>
                 </div>
 
                 <div class="items-grid">
@@ -227,6 +268,11 @@ const availableTags = computed(() => {
                             </div>
                         </div>
                     </div>
+
+                    <div v-if="filteredItems.length === 0 && (searchQuery || activeFilter)" class="no-results">
+                        <p>No items match your filters.</p>
+                        <button class="text-btn" @click="searchQuery = ''; activeFilter = ''">Clear Filters</button>
+                    </div>
                 </div>
             </div>
         </main>
@@ -246,10 +292,13 @@ const availableTags = computed(() => {
 
     <AreaFormModal :is-open="isAreaModalOpen" :edit-id="areaIdToEdit" @saved="isAreaModalOpen = false"
         @close="isAreaModalOpen = false" />
+
+    <AddItemModal :is-open="isAddItemModalOpen" :area-id="store.selectedAreaId" @saved="isAddItemModalOpen = false"
+        @close="isAddItemModalOpen = false" />
 </template>
 
 <style scoped>
-/* Reuse existing + Add New */
+/* Reuse existing styles */
 .areas-layout {
     display: flex;
     height: 100%;
@@ -270,7 +319,6 @@ const availableTags = computed(() => {
     overflow-y: auto;
 }
 
-/* Sidebar Header */
 .sidebar-header {
     display: flex;
     justify-content: space-between;
@@ -306,24 +354,6 @@ const availableTags = computed(() => {
     margin: 0;
 }
 
-.areas-sidebar li {
-    padding: 0.5rem;
-    cursor: pointer;
-    border-radius: 4px;
-    margin-bottom: 2px;
-}
-
-.areas-sidebar li:hover {
-    background: #e9ecef;
-}
-
-.areas-sidebar li.active {
-    background: #2c3e50;
-    color: white;
-    font-weight: bold;
-}
-
-/* Area Header */
 .area-header-block {
     margin-bottom: 2rem;
 }
@@ -359,11 +389,11 @@ const availableTags = computed(() => {
     line-height: 1.5;
 }
 
-/* Items Header (Filter & Delete) */
+/* HEADER STYLES */
 .items-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-end;
     margin-bottom: 1rem;
     border-bottom: 2px solid #eee;
     padding-bottom: 0.5rem;
@@ -371,24 +401,67 @@ const availableTags = computed(() => {
     gap: 1rem;
 }
 
-/* Placeholders */
-.placeholder {
+.header-left {
     display: flex;
     align-items: center;
-    justify-content: center;
-    height: 100%;
-    color: #888;
+    gap: 1rem;
 }
 
-.placeholder-content {
-    text-align: center;
+.header-left h3 {
+    margin: 0;
 }
 
-.placeholder-content .primary-btn {
-    margin-top: 1rem;
+.header-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
-/* Common Button Styles */
+/* NEW SEARCH STYLES */
+.search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-input {
+    padding: 6px 30px 6px 10px;
+    border: 1px solid #ddd;
+    border-radius: 20px;
+    width: 200px;
+    font-size: 0.9rem;
+    transition: width 0.2s;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #3498db;
+    width: 240px;
+}
+
+.search-icon {
+    position: absolute;
+    right: 10px;
+    opacity: 0.5;
+    font-size: 0.8rem;
+    pointer-events: none;
+}
+
+.clear-btn {
+    position: absolute;
+    right: 28px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #999;
+    font-weight: bold;
+}
+
+.clear-btn:hover {
+    color: #555;
+}
+
 .primary-btn {
     background: #2c3e50;
     color: white;
@@ -396,6 +469,11 @@ const availableTags = computed(() => {
     padding: 8px 16px;
     border-radius: 4px;
     cursor: pointer;
+}
+
+.sm-btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
 }
 
 .text-danger {
@@ -407,7 +485,6 @@ const availableTags = computed(() => {
     cursor: pointer;
 }
 
-/* Filters */
 .filter-bar {
     display: flex;
     gap: 0.5rem;
@@ -529,7 +606,6 @@ const availableTags = computed(() => {
     background: #f39c12;
 }
 
-/* Actions */
 .card-actions {
     display: flex;
     justify-content: space-between;
@@ -577,5 +653,22 @@ const availableTags = computed(() => {
 
 .delete:hover {
     background: #fadbd8;
+}
+
+.no-results {
+    text-align: center;
+    padding: 2rem;
+    color: #888;
+    background: #f9f9f9;
+    border-radius: 8px;
+}
+
+.text-btn {
+    background: none;
+    border: none;
+    color: #3498db;
+    cursor: pointer;
+    text-decoration: underline;
+    margin-top: 0.5rem;
 }
 </style>
