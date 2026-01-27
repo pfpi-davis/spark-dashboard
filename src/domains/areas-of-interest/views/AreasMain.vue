@@ -7,8 +7,10 @@ import { useAnalysisStore } from '@/domains/analysis-engine/store';
 // Modals
 import EditTagsModal from '../components/EditTagsModal.vue';
 import ViewContentModal from '../components/ViewContentModal.vue';
-import MoveItemModal from '../components/MoveItemModal.vue';   // <--- NEW
-import EditContentModal from '../components/EditContentModal.vue'; // <--- NEW
+import MoveItemModal from '../components/MoveItemModal.vue';
+import EditContentModal from '../components/EditContentModal.vue';
+import AreaFormModal from '../components/AreaFormModal.vue'; // <--- NEW IMPORT
+import AreaTreeItem from '../components/AreaTreeItem.vue';
 
 const store = useAreasStore();
 const auth = useAuthStore();
@@ -23,13 +25,27 @@ const itemToEditTags = ref<any>(null);
 const isViewModalOpen = ref(false);
 const itemToView = ref<{ title: string; content: string } | null>(null);
 
-const isMoveModalOpen = ref(false);       // <--- NEW
-const itemToMove = ref<any>(null);        // <--- NEW
+const isMoveModalOpen = ref(false);
+const itemToMove = ref<any>(null);
 
-const isEditContentModalOpen = ref(false); // <--- NEW
-const itemToEditContent = ref<any>(null);  // <--- NEW
+const isEditContentModalOpen = ref(false);
+const itemToEditContent = ref<any>(null);
+
+// NEW: Area Form Modal State
+const isAreaModalOpen = ref(false);
+const areaIdToEdit = ref<string | null>(null);
 
 // --- ACTIONS ---
+
+function openCreateAreaModal() {
+    areaIdToEdit.value = null; // null = Create Mode
+    isAreaModalOpen.value = true;
+}
+
+function openEditAreaModal(id: string) {
+    areaIdToEdit.value = id;   // string = Edit Mode
+    isAreaModalOpen.value = true;
+}
 
 function openViewModal(item: any) {
     itemToView.value = {
@@ -44,12 +60,12 @@ function openTagModal(item: any) {
     isTagModalOpen.value = true;
 }
 
-function openMoveModal(item: any) { // <--- NEW
+function openMoveModal(item: any) {
     itemToMove.value = item;
     isMoveModalOpen.value = true;
 }
 
-function openEditContentModal(item: any) { // <--- NEW
+function openEditContentModal(item: any) {
     itemToEditContent.value = item;
     isEditContentModalOpen.value = true;
 }
@@ -76,6 +92,10 @@ async function handleAnalyze(item: any) {
 }
 
 // --- COMPUTED ---
+const currentArea = computed(() => {
+    return store.areas.find(a => a.id === store.selectedAreaId);
+});
+
 const filteredItems = computed(() => {
     if (!activeFilter.value) return store.activeItems;
     return store.activeItems.filter(item =>
@@ -92,19 +112,16 @@ const availableTags = computed(() => {
 <template>
     <div class="areas-layout">
         <aside class="areas-sidebar">
-            <h3>📂 My Areas</h3>
-            <ul>
-                <li v-for="area in store.areas" :key="area.id" :class="{ active: store.selectedAreaId === area.id }"
-                    @click="store.fetchItemsForArea(area.id); activeFilter = ''">
-                    {{ area.name }}
-                </li>
-            </ul>
-            <div v-if="auth.user && store.areas.length === 0" class="empty-msg">
-                No areas yet.
+            <div class="sidebar-header">
+                <h3>📂 My Areas</h3>
+                <button class="add-area-btn" @click="openCreateAreaModal" title="New Area">+</button>
             </div>
 
-            <div v-if="store.areas.length > 0" class="sidebar-tip">
-                <small>Select an area to view items.</small>
+            <ul>
+                <AreaTreeItem v-for="rootArea in store.areaTree" :key="rootArea.id" :area="rootArea" :depth="0" />
+            </ul>
+            <div v-if="auth.user && store.areas.length === 0" class="empty-msg">
+                No areas yet. Click + to create one.
             </div>
         </aside>
 
@@ -112,14 +129,24 @@ const availableTags = computed(() => {
             <div v-if="!store.selectedAreaId" class="placeholder">
                 <div class="placeholder-content">
                     <h3>Welcome to your Knowledge Base</h3>
-                    <p>Select a folder on the left to organize your research.</p>
+                    <p>Select a folder on the left or create a new one.</p>
+                    <button class="primary-btn" @click="openCreateAreaModal">Create First Area</button>
                 </div>
             </div>
 
             <div v-else>
-                <div class="header">
-                    <h2>Items</h2>
+                <div class="area-header-block">
+                    <div class="title-row">
+                        <h2>{{ currentArea?.name }}</h2>
+                        <button class="icon-btn edit-area-btn" @click="openEditAreaModal(store.selectedAreaId!)"
+                            title="Edit Name & Desc">
+                            ✏️
+                        </button>
+                    </div>
+                    <p v-if="currentArea?.description" class="area-desc">{{ currentArea.description }}</p>
+                </div>
 
+                <div class="items-header">
                     <div class="filter-bar" v-if="availableTags.length > 0">
                         <span>Filter:</span>
                         <button class="tag-pill" :class="{ active: activeFilter === '' }" @click="activeFilter = ''">
@@ -188,14 +215,13 @@ const availableTags = computed(() => {
                             </div>
 
                             <div class="secondary-actions">
-                                <button class="action-btn" @click="openMoveModal(item)" title="Move to another folder">
+                                <button class="action-btn" @click="openMoveModal(item)" title="Move">
                                     📦 Move
                                 </button>
-                                <button class="action-btn" @click="openTagModal(item)" title="Edit Tags">
+                                <button class="action-btn" @click="openTagModal(item)" title="Tag">
                                     🏷️ Tag
                                 </button>
-                                <button class="action-btn delete" @click="store.deleteItem(item.id)"
-                                    title="Delete Item">
+                                <button class="action-btn delete" @click="store.deleteItem(item.id)" title="Delete">
                                     🗑️
                                 </button>
                             </div>
@@ -217,10 +243,13 @@ const availableTags = computed(() => {
 
     <EditContentModal :is-open="isEditContentModalOpen" :item="itemToEditContent"
         @saved="isEditContentModalOpen = false" @close="isEditContentModalOpen = false" />
+
+    <AreaFormModal :is-open="isAreaModalOpen" :edit-id="areaIdToEdit" @saved="isAreaModalOpen = false"
+        @close="isAreaModalOpen = false" />
 </template>
 
 <style scoped>
-/* Layout */
+/* Reuse existing + Add New */
 .areas-layout {
     display: flex;
     height: 100%;
@@ -241,7 +270,36 @@ const availableTags = computed(() => {
     overflow-y: auto;
 }
 
-/* Sidebar */
+/* Sidebar Header */
+.sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.sidebar-header h3 {
+    margin: 0;
+}
+
+.add-area-btn {
+    background: #2c3e50;
+    color: white;
+    border: none;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+}
+
+.add-area-btn:hover {
+    background: #34495e;
+}
+
 .areas-sidebar ul {
     list-style: none;
     padding: 0;
@@ -265,12 +323,52 @@ const availableTags = computed(() => {
     font-weight: bold;
 }
 
-.sidebar-tip {
-    margin-top: auto;
-    color: #888;
-    font-size: 0.8rem;
-    padding-top: 1rem;
-    text-align: center;
+/* Area Header */
+.area-header-block {
+    margin-bottom: 2rem;
+}
+
+.title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.title-row h2 {
+    margin: 0;
+}
+
+.edit-area-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    opacity: 0.5;
+}
+
+.edit-area-btn:hover {
+    opacity: 1;
+    transform: scale(1.1);
+}
+
+.area-desc {
+    margin: 0.5rem 0 0 0;
+    color: #666;
+    font-style: italic;
+    max-width: 600px;
+    line-height: 1.5;
+}
+
+/* Items Header (Filter & Delete) */
+.items-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    border-bottom: 2px solid #eee;
+    padding-bottom: 0.5rem;
+    flex-wrap: wrap;
+    gap: 1rem;
 }
 
 /* Placeholders */
@@ -286,18 +384,30 @@ const availableTags = computed(() => {
     text-align: center;
 }
 
-/* Header & Filters */
-.header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 1rem;
-    border-bottom: 2px solid #eee;
-    padding-bottom: 0.5rem;
-    flex-wrap: wrap;
-    gap: 1rem;
+.placeholder-content .primary-btn {
+    margin-top: 1rem;
 }
 
+/* Common Button Styles */
+.primary-btn {
+    background: #2c3e50;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.text-danger {
+    color: red;
+    background: none;
+    border: 1px solid red;
+    padding: 4px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Filters */
 .filter-bar {
     display: flex;
     gap: 0.5rem;
@@ -343,7 +453,6 @@ const availableTags = computed(() => {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 }
 
-/* Card Content */
 .top-row {
     display: flex;
     justify-content: space-between;
@@ -381,7 +490,6 @@ const availableTags = computed(() => {
     margin-bottom: 0.5rem;
 }
 
-/* AI & Spark */
 .spark-area {
     margin-top: 1rem;
     padding-top: 0.5rem;
@@ -469,14 +577,5 @@ const availableTags = computed(() => {
 
 .delete:hover {
     background: #fadbd8;
-}
-
-.text-danger {
-    color: red;
-    background: none;
-    border: 1px solid red;
-    padding: 4px 8px;
-    border-radius: 4px;
-    cursor: pointer;
 }
 </style>

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, watch } from 'vue'
+import { ref, computed, watch } from 'vue'
 import {
   getFirestore,
   collection,
@@ -11,10 +11,11 @@ import {
   where,
   updateDoc,
   serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore'
 import { useAuthStore } from '@/core/stores/auth'
 import type { Area, SavedItem } from './types'
-import DOMPurify from 'dompurify' // <--- 1. IMPORT THIS
+import DOMPurify from 'dompurify'
 
 export const useAreasStore = defineStore('areas-of-interest', () => {
   const db = getFirestore()
@@ -24,7 +25,33 @@ export const useAreasStore = defineStore('areas-of-interest', () => {
   const activeItems = ref<SavedItem[]>([])
   const selectedAreaId = ref<string | null>(null)
 
-  // --- 1. SYNC AREAS (Real-time) ---
+  // --- GETTER: Tree Structure ---
+  const areaTree = computed(() => {
+    const map: Record<string, Area> = {}
+    const roots: Area[] = []
+
+    // 1. Initialize Map
+    areas.value.forEach((a) => {
+      // Create a shallow copy with a children array
+      map[a.id] = { ...a, children: [] }
+    })
+
+    // 2. Build Tree
+    areas.value.forEach((a) => {
+      const node = map[a.id]
+      if (a.parentId && map[a.parentId]) {
+        map[a.parentId].children?.push(node)
+      } else {
+        roots.push(node)
+      }
+    })
+
+    // 3. Sort (Optional: Alphabetical)
+    // A simple recursive sort could go here, but flat sort in watcher helps
+    return roots
+  })
+
+  // --- 1. SYNC ---
   watch(
     () => auth.user,
     (user) => {
@@ -42,27 +69,52 @@ export const useAreasStore = defineStore('areas-of-interest', () => {
     { immediate: true },
   )
 
-  // --- 2. ACTIONS: Manage Areas ---
-  async function createArea(name: string) {
+  // --- 2. ACTIONS: Areas ---
+
+  // UPDATED: Accepts parentId
+  async function createArea(
+    name: string,
+    description: string = '',
+    parentId: string | null = null,
+  ) {
     if (!auth.user || !name.trim()) return
     await addDoc(collection(db, 'users', auth.user.uid, 'areas'), {
       name: name.trim(),
+      description: description.trim(),
+      parentId,
       createdAt: serverTimestamp(),
     })
   }
 
-  async function deleteArea(areaId: string) {
-    if (!auth.user || !confirm('Delete this area and all its saved items?')) return
+  // UPDATED: Accepts parentId (Moving folders)
+  async function updateArea(
+    areaId: string,
+    name: string,
+    description: string = '',
+    parentId: string | null = null,
+  ) {
+    if (!auth.user || !name.trim()) return
+    const docRef = doc(db, 'users', auth.user.uid, 'areas', areaId)
+    await updateDoc(docRef, {
+      name: name.trim(),
+      description: description.trim(),
+      parentId,
+    })
+  }
 
-    // 1. Delete the area folder
+  async function deleteArea(areaId: string) {
+    if (!auth.user || !confirm('Delete this folder? (Items will be removed)')) return
+
+    // Simple delete for MVP.
+    // Ideally, we'd recursively find children and delete them too.
+    // For now, if a parent is deleted, children will visually "pop" to the root level
+    // because their parentId no longer exists in the map.
     await deleteDoc(doc(db, 'users', auth.user.uid, 'areas', areaId))
 
-    // 2. Note: Items in this area will technically become "orphaned" in Firestore
-    // unless you batch delete them. For this MVP, we just clear the view.
     if (selectedAreaId.value === areaId) selectedAreaId.value = null
   }
 
-  // --- 3. ACTIONS: Manage Items ---
+  // --- 3. ACTIONS: Items ---
   async function saveItemToArea(
     areaId: string,
     item: Omit<SavedItem, 'id' | 'savedAt' | 'areaId'>,
@@ -70,7 +122,6 @@ export const useAreasStore = defineStore('areas-of-interest', () => {
   ) {
     if (!auth.user) return
 
-    // 2. SANITIZE CONTENT (If it's a string/html)
     let cleanContent = item.content
     if (typeof item.content === 'string') {
       cleanContent = DOMPurify.sanitize(item.content)
@@ -78,34 +129,30 @@ export const useAreasStore = defineStore('areas-of-interest', () => {
 
     await addDoc(collection(db, 'users', auth.user.uid, 'saved_items'), {
       ...item,
-      content: cleanContent, // Save the clean version
+      content: cleanContent,
       areaId,
       tags,
       savedAt: serverTimestamp(),
     })
   }
+
   async function updateItemTags(itemId: string, newTags: string[]) {
     if (!auth.user) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
     await updateDoc(itemRef, { tags: newTags })
   }
 
-  // NEW: Move Item to different Area
   async function moveItem(itemId: string, newAreaId: string) {
     if (!auth.user) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
     await updateDoc(itemRef, { areaId: newAreaId })
-    // Note: The item will disappear from the current view immediately due to the listener!
   }
 
-  // NEW: Update Item Content (Rich Text / Title)
   async function updateItemContent(itemId: string, newContent: string, newTitle?: string) {
     if (!auth.user) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
 
-    // 3. SANITIZE ON UPDATE
     const cleanContent = DOMPurify.sanitize(newContent)
-
     const updates: any = { content: cleanContent }
     if (newTitle) updates.title = newTitle
 
@@ -136,15 +183,17 @@ export const useAreasStore = defineStore('areas-of-interest', () => {
 
   return {
     areas,
+    areaTree, // <--- Exported Getter
     activeItems,
     selectedAreaId,
     createArea,
+    updateArea,
     deleteArea,
     saveItemToArea,
     updateItemTags,
     fetchItemsForArea,
     deleteItem,
-    moveItem, // <--- Export
-    updateItemContent, // <--- Export
+    moveItem,
+    updateItemContent,
   }
 })

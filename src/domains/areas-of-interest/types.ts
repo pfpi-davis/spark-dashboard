@@ -1,17 +1,19 @@
 export interface Area {
-  id: string;
-  name: string;
-  description?: string;
-  createdAt: any; // Firestore Timestamp
+  id: string
+  name: string
+  description?: string
+  parentId?: string | null // <--- NEW: The link to the parent folder
+  createdAt: any
+  children?: Area[] // <--- Runtime only (for the UI tree)
 }
 
 export interface SavedItem {
-  id: string;
-  areaId: string;      // The folder it belongs to
-  type: 'rss' | 'spark' | 'note' | 'web'; // Expandable types
-  title: string;
-  sourceUrl?: string;  // Optional, if it's a link
-  content?: any;       // The full payload (RSS item, Spark summary, text)
-  savedAt: any;
-  tags?: string[];
+  id: string
+  areaId: string
+  type: 'rss' | 'spark' | 'note' | 'web'
+  title: string
+  sourceUrl?: string
+  content?: any
+  savedAt: any
+  tags?: string[]
 }
