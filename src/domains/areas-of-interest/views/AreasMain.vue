@@ -4,6 +4,7 @@ import { useAreasStore } from '../store';
 import { useAuthStore } from '@/core/stores/auth';
 import { useAnalysisStore } from '@/domains/analysis-engine/store';
 import EditTagsModal from '../components/EditTagsModal.vue';
+import ViewContentModal from '../components/ViewContentModal.vue';
 
 const store = useAreasStore();
 const auth = useAuthStore();
@@ -11,23 +12,55 @@ const analysisStore = useAnalysisStore();
 
 const activeFilter = ref('');
 
+// --- MODAL STATE ---
 const isTagModalOpen = ref(false);
-const itemToEdit = ref<any>(null); // Holds the item currently being edited
+const itemToEdit = ref<any>(null);
 
-const openTagModal = (item: any) => {
+const isViewModalOpen = ref(false);
+const itemToView = ref<{ title: string; content: string } | null>(null);
+
+// --- ACTIONS ---
+
+function openViewModal(item: any) {
+    itemToView.value = {
+        title: item.title,
+        content: item.content
+    };
+    isViewModalOpen.value = true;
+}
+
+function openTagModal(item: any) {
     itemToEdit.value = item;
     isTagModalOpen.value = true;
-};
+}
 
-// 2. Handle the Save event from the modal
-const handleTagsSaved = async (newTags: string[]) => {
+async function handleTagsSaved(newTags: string[]) {
     if (itemToEdit.value) {
         await store.updateItemTags(itemToEdit.value.id, newTags);
-        itemToEdit.value = null; // Clear selection
+        itemToEdit.value = null;
     }
-};
+}
 
-// Filter items
+function hasReadableContent(item: any) {
+    return item.type === 'note' || (item.content && typeof item.content === 'string');
+}
+
+// --- AI ANALYZE LOGIC (FIXED) ---
+async function handleAnalyze(item: any) {
+    // 1. Get the content safely
+    const safeContent = (typeof item.content === 'string') ? item.content : '';
+
+    // 2. We MUST pass the URL so the Store can generate the ID.
+    // The Backend function will prefer 'safeContent' over scraping the URL,
+    // so privacy is maintained for Clipped Notes.
+    await analysisStore.analyze({
+        title: item.title,
+        summary: safeContent,
+        url: item.sourceUrl // Always pass this!
+    });
+}
+
+// --- COMPUTED ---
 const filteredItems = computed(() => {
     if (!activeFilter.value) return store.activeItems;
     return store.activeItems.filter(item =>
@@ -39,18 +72,6 @@ const availableTags = computed(() => {
     const allTags = store.activeItems.flatMap(i => i.tags || []);
     return [...new Set(allTags)].sort();
 });
-
-// NEW: Simple Tag Editor
-const editTags = async (item: any) => {
-    const currentTags = item.tags?.join(', ') || '';
-    const newTagsString = prompt("Edit Tags (comma separated):", currentTags);
-
-    if (newTagsString !== null) {
-        // Clean up the string into an array
-        const newTags = newTagsString.split(',').map((t: string) => t.trim()).filter((t: string) => t);
-        await store.updateItemTags(item.id, newTags);
-    }
-};
 </script>
 
 <template>
@@ -88,8 +109,9 @@ const editTags = async (item: any) => {
                         </button>
                     </div>
 
-                    <button @click="store.deleteArea(store.selectedAreaId!)" class="delete-btn text-danger">Delete
-                        Folder</button>
+                    <button @click="store.deleteArea(store.selectedAreaId!)" class="delete-btn text-danger">
+                        Delete Folder
+                    </button>
                 </div>
 
                 <div class="items-grid">
@@ -115,41 +137,50 @@ const editTags = async (item: any) => {
                             ✨ {{ item.content.summary }}
                         </div>
 
-                        <div v-else-if="item.sourceUrl" class="spark-area">
-                            <div v-if="analysisStore.getSpark(item.sourceUrl)" class="spark-preview">
+                        <div v-else class="spark-area">
+                            <div v-if="item.sourceUrl && analysisStore.getSpark(item.sourceUrl)" class="spark-preview">
                                 <div class="ai-header">
                                     <strong>✨ Spark Analysis</strong>
-                                    <span class="relevance-badge">{{ analysisStore.getSpark(item.sourceUrl).relevance
-                                    }}</span>
+                                    <span class="relevance-badge">
+                                        {{ analysisStore.getSpark(item.sourceUrl).relevance }}
+                                    </span>
                                 </div>
                                 {{ analysisStore.getSpark(item.sourceUrl).summary }}
                             </div>
 
-                            <button v-else class="spark-btn" @click="analysisStore.analyze({
-                                title: item.title,
-                                summary: typeof item.content === 'string' ? item.content : '',
-                                url: item.sourceUrl
-                            })" :disabled="analysisStore.isAnalyzing">
+                            <button v-else-if="item.sourceUrl" class="spark-btn" @click="handleAnalyze(item)"
+                                :disabled="analysisStore.isAnalyzing">
                                 {{ analysisStore.isAnalyzing ? 'Thinking...' : '✨ Run Analysis' }}
                             </button>
+
+                            <div v-else class="no-url-msg">
+                                <small>Cannot analyze items without a source URL.</small>
+                            </div>
                         </div>
 
                         <div class="card-actions">
+                            <button v-if="hasReadableContent(item)" class="action-btn view-btn"
+                                @click="openViewModal(item)">
+                                📄 View Content
+                            </button>
                             <button class="action-btn" @click="openTagModal(item)">🏷️ Edit Tags</button>
                             <button class="action-btn delete" @click="store.deleteItem(item.id)">🗑️ Delete</button>
                         </div>
-                        <EditTagsModal :is-open="isTagModalOpen" :initial-tags="itemToEdit?.tags || []"
-                            @save="handleTagsSaved" @close="isTagModalOpen = false" />
                     </div>
                 </div>
             </div>
         </main>
     </div>
+
+    <EditTagsModal :is-open="isTagModalOpen" :initial-tags="itemToEdit?.tags || []" @save="handleTagsSaved"
+        @close="isTagModalOpen = false" />
+
+    <ViewContentModal :is-open="isViewModalOpen" :title="itemToView?.title || ''" :content="itemToView?.content || ''"
+        @close="isViewModalOpen = false" />
 </template>
 
 <style scoped>
-/* ... Keep all existing styles ... */
-
+/* Reuse existing styles */
 .areas-layout {
     display: flex;
     height: 100%;
@@ -160,11 +191,6 @@ const editTags = async (item: any) => {
     background: #f8f9fa;
     padding: 1rem;
     border-right: 1px solid #ddd;
-}
-
-.areas-sidebar ul {
-    list-style: none;
-    padding: 0;
 }
 
 .areas-sidebar li {
@@ -306,7 +332,6 @@ const editTags = async (item: any) => {
     background: #f39c12;
 }
 
-/* NEW STYLES */
 .card-actions {
     display: flex;
     justify-content: flex-end;
@@ -346,5 +371,22 @@ const editTags = async (item: any) => {
     padding: 4px 8px;
     border-radius: 4px;
     cursor: pointer;
+}
+
+.view-btn {
+    color: #2c3e50;
+    border-color: #2c3e50;
+    font-weight: 500;
+    margin-right: auto;
+}
+
+.view-btn:hover {
+    background: #f0f4f8;
+}
+
+.no-url-msg {
+    color: #888;
+    font-style: italic;
+    font-size: 0.8rem;
 }
 </style>

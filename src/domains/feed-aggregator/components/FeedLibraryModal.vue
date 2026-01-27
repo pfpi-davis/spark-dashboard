@@ -1,28 +1,25 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
 import { useFeedStore } from '../store';
-import { useAuthStore } from '@/core/stores/auth'; // <--- Import Auth
+import { useAuthStore } from '@/core/stores/auth';
 
 const props = defineProps<{ isOpen: boolean }>();
 const emit = defineEmits(['close']);
 const store = useFeedStore();
-const auth = useAuthStore(); // <--- Use Auth
-
-onMounted(() => {
-    store.fetchLibrary();
-});
+const auth = useAuthStore();
 </script>
 
 <template>
     <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
         <div class="modal-content">
-
             <header>
                 <h3>📚 Community Library</h3>
                 <button class="close-btn" @click="emit('close')">×</button>
             </header>
+
             <div class="feed-list">
+
                 <div class="section-title">✨ Featured Sources</div>
+
                 <div class="library-item featured">
                     <div class="info">
                         <div class="url">The Guardian (Environment)</div>
@@ -34,6 +31,7 @@ onMounted(() => {
                         {{store.subscriptions.some(s => s.url.includes('theguardian.com')) ? '✓ Added' : '+ Add'}}
                     </button>
                 </div>
+
                 <div class="library-item featured">
                     <div class="info">
                         <div class="url">New York Times (Climate)</div>
@@ -56,8 +54,9 @@ onMounted(() => {
                         {{store.subscriptions.some(s => s.url.includes('congress.gov')) ? '✓ Added' : '+ Add'}}
                     </button>
                 </div>
-            </div>
-            <div class="feed-list">
+
+                <div class="section-title">📚 Community Feeds</div>
+
                 <div v-if="store.publicFeeds.length === 0" class="loading">
                     {{ store.isLoading ? 'Loading...' : 'Library is empty.' }}
                 </div>
@@ -84,6 +83,7 @@ onMounted(() => {
                         </button>
                     </div>
                 </div>
+
             </div>
         </div>
     </div>
@@ -209,5 +209,19 @@ header {
     text-align: center;
     color: #888;
     padding: 2rem;
+}
+
+.section-title {
+    padding: 0.5rem 0;
+    font-weight: bold;
+    color: #888;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    border-bottom: 2px solid #eee;
+    margin-top: 1rem;
+}
+
+.featured {
+    background: #fdfdfd;
 }
 </style>

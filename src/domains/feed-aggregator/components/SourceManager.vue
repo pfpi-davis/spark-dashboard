@@ -2,10 +2,41 @@
 import { ref } from 'vue';
 import { useFeedStore } from '../store';
 import FeedLibraryModal from './FeedLibraryModal.vue';
+import ShareFeedModal from './ShareFeedModal.vue';
+import FeedSettingsModal from './FeedSettingsModal.vue';
 
 const store = useFeedStore();
 const newUrl = ref('');
 const isLibraryOpen = ref(false); // Controls the modal visibility
+const isShareModalOpen = ref(false);
+const feedToShare = ref('');
+const isSettingsOpen = ref(false);
+const settingsFeedUrl = ref('');
+const settingsKeywords = ref<string[]>([]);
+
+
+function openSettings(sub: any) {
+    settingsFeedUrl.value = sub.url;
+    settingsKeywords.value = sub.keywords || [];
+    isSettingsOpen.value = true;
+}
+
+function handleSettingsSave(url: string, keywords: string[]) {
+    store.updateFeedSettings(url, keywords);
+}
+
+// Helper to check if a feed supports settings (Currently just Congress)
+function hasSettings(url: string) {
+    return url.includes('congress.gov');
+}
+function openShare(url: string) {
+    feedToShare.value = url;
+    isShareModalOpen.value = true;
+}
+
+function handleShareConfirm(description: string) {
+    store.shareFeedToLibrary(feedToShare.value, description);
+}
 
 function handleSubmit() {
     if (newUrl.value) {
@@ -40,8 +71,11 @@ function handleSubmit() {
                 </span>
 
                 <div class="actions">
-                    <button class="icon-btn share-btn" @click="store.shareFeedToLibrary(sub.url)"
-                        title="Share to Library">
+                    <button v-if="hasSettings(sub.url)" class="icon-btn" @click="openSettings(sub)"
+                        title="Feed Settings">
+                        ⚙️
+                    </button>
+                    <button class="icon-btn share-btn" @click="openShare(sub.url)" title="Share to Library">
                         📤
                     </button>
 
@@ -57,6 +91,10 @@ function handleSubmit() {
         </div>
 
         <FeedLibraryModal :is-open="isLibraryOpen" @close="isLibraryOpen = false" />
+        <ShareFeedModal :is-open="isShareModalOpen" :url="feedToShare" @close="isShareModalOpen = false"
+            @confirm="handleShareConfirm" />
+        <FeedSettingsModal :is-open="isSettingsOpen" :feed-url="settingsFeedUrl" :initial-keywords="settingsKeywords"
+            @save="handleSettingsSave" @close="isSettingsOpen = false" />
     </div>
 </template>
 

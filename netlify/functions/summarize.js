@@ -1,22 +1,25 @@
 // netlify/functions/summarize.js
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export const handler = async function (event, context) {
   // 1. Security Check: Only allow POST requests
-  if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: "Method Not Allowed" };
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' }
   }
 
   try {
-    // 2. Parse the incoming data
-    const { title, text } = JSON.parse(event.body);
-    if (!title && !text) {
-      return { statusCode: 400, body: "Missing text or title" };
+    const body = JSON.parse(event.body)
+    const title = body.title
+    // CRITICAL FIX: Look for 'text' OR 'summary'
+    const text = body.text || body.summary
+
+    if (!text && !title) {
+      console.error('Missing input:', body)
+      return { statusCode: 400, body: JSON.stringify({ error: 'Missing text/summary or title' }) }
     }
 
-    // 3. Connect to Gemini (Accessing key from .env)
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' })
 
     // 4. The Prompt
     const prompt = `
@@ -33,24 +36,27 @@ export const handler = async function (event, context) {
 
       Return the response as a JSON object with keys: "summary", "relevance", "tweet".
       Do NOT wrap in markdown code blocks.
-    `;
+    `
 
     // 5. Generate
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const jsonText = response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const jsonText = response
+      .text()
+      .replace(/```json/g, '')
+      .replace(/```/g, '')
+      .trim()
 
     return {
       statusCode: 200,
-      headers: { "Content-Type": "application/json" },
+      headers: { 'Content-Type': 'application/json' },
       body: jsonText,
-    };
-
+    }
   } catch (error) {
-    console.error("AI Error:", error);
+    console.error('Summarize Function Failed:', error)
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: error.message }),
-    };
+      body: JSON.stringify({ error: error.message || 'Failed to generate summary' }),
+    }
   }
-};
+}

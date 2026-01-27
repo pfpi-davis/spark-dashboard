@@ -1,218 +1,276 @@
-import { defineStore } from 'pinia';
-import { ref, watch } from 'vue';
-import { 
-  getFirestore, 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  deleteDoc,
+import { defineStore } from 'pinia'
+import { ref, watch } from 'vue'
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  updateDoc,
   collection,
   addDoc,
+  deleteDoc,
   query,
   where,
-  getDocs
-} from 'firebase/firestore';
-import { useAuthStore } from '@/core/stores/auth';
-import { rssAdapter } from './adapters/rssAdapter';
-import { govAdapter } from './adapters/govAdapter';
-import { newsAdapter } from './adapters/newsAdapter';
-import type { Resource } from '@/core/types/domain';
-import type { FeedSubscription, PublicFeed } from './types';
-import { congressAdapter } from './adapters/congressAdapter';
+  getDocs,
+  onSnapshot, // <--- The Secret Sauce
+  arrayUnion,
+  arrayRemove,
+} from 'firebase/firestore'
+import { useAuthStore } from '@/core/stores/auth'
+import { useNotificationStore } from '@/core/stores/notifications'
+import { rssAdapter } from './adapters/rssAdapter'
+import { govAdapter } from './adapters/govAdapter'
+import { newsAdapter } from './adapters/newsAdapter'
+import { congressAdapter } from './adapters/congressAdapter'
+import type { Resource } from '@/core/types/domain'
+import type { FeedSubscription, PublicFeed } from './types'
 
 export const useFeedStore = defineStore('feed-aggregator', () => {
-  const db = getFirestore();
-  const auth = useAuthStore();
-  
-  // STATE: Now strictly typed as Objects
-  const subscriptions = ref<FeedSubscription[]>([]);
-  const resources = ref<Partial<Resource>[]>([]);
-  const publicFeeds = ref<PublicFeed[]>([]);
-  const isLoading = ref(false);
+  const db = getFirestore()
+  const auth = useAuthStore()
+  const notifyStore = useNotificationStore()
 
-  // --- 1. PERSISTENCE ---
+  // STATE
+  const subscriptions = ref<FeedSubscription[]>([])
+  const resources = ref<Partial<Resource>[]>([])
+  const publicFeeds = ref<PublicFeed[]>([])
+  const isLoading = ref(false)
 
-  async function loadUserConfig() {
-    if (!auth.user) return;
-    try {
-      const userDocRef = doc(db, 'users', auth.user.uid);
-      const snap = await getDoc(userDocRef);
+  // Unsubscribe functions (to stop listening when logged out)
+  let unsubscribeUser: null | (() => void) = null
+  let unsubscribeLibrary: null | (() => void) = null
 
-      if (snap.exists()) {
-        const data = snap.data();
-        // MIGRATION: Handle old string[] format if it exists
-        if (data.feeds && typeof data.feeds[0] === 'string') {
-          subscriptions.value = data.feeds.map((url: string) => ({
-            url,
-            isActive: true,
-            addedAt: new Date()
-          }));
-        } else {
-          subscriptions.value = data.feeds || [];
-        }
-      } else {
-        await setDoc(userDocRef, { feeds: [] });
-      }
-      fetchAll();
-    } catch (e) {
-      console.error("Failed to load config:", e);
+  // --- 1. REAL-TIME SYNC ---
+
+  function initListeners() {
+    // A. Listen to User's Subscriptions
+    if (auth.user) {
+      const userDocRef = doc(db, 'users', auth.user.uid)
+
+      unsubscribeUser = onSnapshot(
+        userDocRef,
+        (snap) => {
+          if (snap.exists()) {
+            const data = snap.data()
+            // Handle migration from old string[] to new object[] structure
+            if (data.feeds && data.feeds.length > 0 && typeof data.feeds[0] === 'string') {
+              subscriptions.value = data.feeds.map((url: string) => ({
+                url,
+                isActive: true,
+                addedAt: new Date(),
+              }))
+            } else {
+              subscriptions.value = data.feeds || []
+            }
+
+            // Trigger a news fetch whenever subscriptions change
+            fetchAll()
+          } else {
+            // Initialize if missing
+            setDoc(userDocRef, { feeds: [] })
+            subscriptions.value = []
+          }
+        },
+        (error) => {
+          console.error('User sync error:', error)
+        },
+      )
     }
+
+    // B. Listen to Public Library (Everyone's shares)
+    const libCol = collection(db, 'public_library')
+    unsubscribeLibrary = onSnapshot(
+      libCol,
+      (snap) => {
+        publicFeeds.value = snap.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        })) as PublicFeed[]
+      },
+      (error) => {
+        console.error('Library sync error:', error)
+      },
+    )
   }
 
-  async function saveConfig() {
-    if (!auth.user) return;
-    const userDocRef = doc(db, 'users', auth.user.uid);
-    // Save the entire object array
-    await updateDoc(userDocRef, { feeds: subscriptions.value });
+  // Stop listening when logged out
+  function stopListeners() {
+    if (unsubscribeUser) unsubscribeUser()
+    if (unsubscribeLibrary) unsubscribeLibrary()
+    subscriptions.value = []
+    resources.value = []
+    publicFeeds.value = []
   }
 
-  // --- 2. MANAGEMENT ACTIONS ---
+  // --- 2. ACTIONS ---
 
   async function addSource(url: string) {
-    if (subscriptions.value.some(s => s.url === url)) return;
-    
-    subscriptions.value.push({
-      url,
-      isActive: true,
-      addedAt: new Date()
-    });
-    
-    await saveConfig();
-    fetchAll(); 
-  }
+    if (subscriptions.value.some((s) => s.url === url)) return
 
-async function fetchLibrary() {
-  try {
-    const libCol = collection(db, 'public_library');
-    const snap = await getDocs(libCol);
-    
-    publicFeeds.value = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as PublicFeed[];
-    
-  } catch (e) {
-    console.error("Failed to load library:", e);
-  }
-}
+    // We update Firestore. The 'onSnapshot' listener above will
+    // catch this change and automatically update 'subscriptions.value' AND trigger 'fetchAll'
+    if (auth.user) {
+      const userDocRef = doc(db, 'users', auth.user.uid)
+      const newFeed: FeedSubscription = {
+        url,
+        isActive: true,
+        addedAt: new Date(),
+      }
 
-async function subscribeFromLibrary(url: string) {
-  await addSource(url);
-  alert("Subscribed!");
-}
-
-  async function removeSource(url: string) {
-    subscriptions.value = subscriptions.value.filter(s => s.url !== url);
-    resources.value = resources.value.filter(r => r.url !== url);
-    await saveConfig();
-  }
-
-  // NEW: Hide/Show Logic
-  async function toggleSource(url: string) {
-    const feed = subscriptions.value.find(s => s.url === url);
-    if (feed) {
-      feed.isActive = !feed.isActive;
-      await saveConfig();
-      // Re-fetch to reflect changes (or just filter locally to be faster)
-      fetchAll();
+      // Use arrayUnion to safely add to the list
+      await updateDoc(userDocRef, {
+        feeds: arrayUnion(newFeed),
+      })
+      notifyStore.notify('Feed added', 'success')
     }
   }
 
-  // NEW: Share Logic (Public Library)
+  async function removeSource(url: string) {
+    if (auth.user) {
+      const userDocRef = doc(db, 'users', auth.user.uid)
+      const feedToRemove = subscriptions.value.find((s) => s.url === url)
+
+      if (feedToRemove) {
+        await updateDoc(userDocRef, {
+          feeds: arrayRemove(feedToRemove),
+        })
+        // Manually clear resources for instant feedback
+        resources.value = resources.value.filter((r) => r.url !== url)
+        notifyStore.notify('Feed removed', 'info')
+      }
+    }
+  }
+
+  async function toggleSource(url: string) {
+    if (auth.user) {
+      // For toggling, we have to read-modify-write the whole array
+      // because Firestore can't toggle a specific field inside an array object easily
+      const userDocRef = doc(db, 'users', auth.user.uid)
+      const updatedFeeds = subscriptions.value.map((s) =>
+        s.url === url ? { ...s, isActive: !s.isActive } : s,
+      )
+
+      await updateDoc(userDocRef, { feeds: updatedFeeds })
+    }
+  }
+
+  // --- 3. NEWS FETCHING ---
+
+  async function fetchAll() {
+    // Only fetch if we have active feeds
+    const activeFeeds = subscriptions.value.filter((s) => s.isActive)
+    if (activeFeeds.length === 0) {
+      resources.value = []
+      return
+    }
+
+    isLoading.value = true
+    resources.value = []
+
+    const promises = activeFeeds.map(async (sub) => {
+      try {
+        if (newsAdapter.validateUrl(sub.url)) return await newsAdapter.fetch(sub.url, sub.keywords)
+        if (govAdapter.validateUrl(sub.url)) return await govAdapter.fetch(sub.url, sub.keywords)
+        if (congressAdapter.validateUrl(sub.url))
+          return await congressAdapter.fetch(sub.url, sub.keywords)
+        return await rssAdapter.fetch(sub.url)
+      } catch (err) {
+        console.error(`Failed to fetch ${sub.url}`, err)
+        return []
+      }
+    })
+
+    const results = await Promise.all(promises)
+
+    resources.value = results.flat().sort((a, b) => {
+      return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime()
+    })
+
+    isLoading.value = false
+  }
+
+  // --- 4. LIBRARY ACTIONS ---
+
   async function shareFeedToLibrary(url: string, description: string = '') {
-    if (!auth.user) return alert("Must be logged in");
-    
+    if (!auth.user) return notifyStore.notify('Must be logged in', 'error')
+
     try {
-      // Check if already exists in public library
-      const libCol = collection(db, 'public_library');
-      const q = query(libCol, where('url', '==', url));
-      const snap = await getDocs(q);
-      
-      if (!snap.empty) return alert("Already in library!");
+      const libCol = collection(db, 'public_library')
+      const q = query(libCol, where('url', '==', url))
+      const snap = await getDocs(q) // Check duplicates once
+
+      if (!snap.empty) return notifyStore.notify('Already in library', 'info')
 
       await addDoc(libCol, {
         url,
         description,
         sharedBy: auth.user.email,
         sharedAt: new Date(),
-        likes: 0
-      });
-      alert("Shared to Public Library!");
+        likes: 0,
+      })
+      notifyStore.notify('Shared to Public Library!', 'success')
     } catch (e) {
-      console.error(e);
-      alert("Failed to share.");
+      console.error(e)
+      notifyStore.notify('Failed to share feed.', 'error')
     }
   }
 
-  // --- 3. FETCHING ---
-
-  async function fetchAll() {
-    isLoading.value = true;
-    resources.value = [];
-
-    // FILTER: Only fetch 'isActive' feeds
-    const activeFeeds = subscriptions.value.filter(s => s.isActive);
-
-    const promises = activeFeeds.map(async (sub) => {
-      try {
-        if (newsAdapter.validateUrl(sub.url)) return await newsAdapter.fetch(sub.url);
-        if (govAdapter.validateUrl(sub.url)) return await govAdapter.fetch(sub.url);
-        if (congressAdapter.validateUrl(sub.url)) return await congressAdapter.fetch(sub.url); 
-        return await rssAdapter.fetch(sub.url);
-      } catch (err) {
-        console.error(`Failed to fetch ${sub.url}`, err);
-        return [];
-      }
-    });
-
-    const results = await Promise.all(promises);
-    
-    resources.value = results.flat().sort((a, b) => {
-      return new Date(b.publishedAt || 0).getTime() - new Date(a.publishedAt || 0).getTime();
-    });
-
-    isLoading.value = false;
+  async function subscribeFromLibrary(url: string) {
+    await addSource(url)
   }
 
   async function deleteFeedFromLibrary(feedId: string) {
-    if (!auth.user) return;
-    
-    if (!confirm("Are you sure you want to remove this from the public library?")) return;
-
+    if (!auth.user) return
     try {
-      const feedRef = doc(db, 'public_library', feedId);
-      await deleteDoc(feedRef);
-      
-      // Update local state immediately
-      publicFeeds.value = publicFeeds.value.filter(f => f.id !== feedId);
-      
+      const feedRef = doc(db, 'public_library', feedId)
+      await deleteDoc(feedRef)
+      notifyStore.notify('Removed from library', 'info')
     } catch (e) {
-      console.error("Failed to delete:", e);
-      alert("Could not delete feed.");
+      notifyStore.notify('Could not delete feed', 'error')
     }
   }
 
-  watch(() => auth.user, (u) => {
-    if (u) loadUserConfig();
-    else {
-      subscriptions.value = [];
-      resources.value = [];
+  async function updateFeedSettings(url: string, newKeywords: string[]) {
+    if (!auth.user) return
+
+    // Update local state
+    const feed = subscriptions.value.find((s) => s.url === url)
+    if (feed) {
+      feed.keywords = newKeywords
     }
-  }, { immediate: true });
+
+    // Update Firestore
+    const userDocRef = doc(db, 'users', auth.user.uid)
+    await updateDoc(userDocRef, { feeds: subscriptions.value })
+
+    // Refresh to see new results
+    fetchAll()
+  }
+
+  // --- WATCH AUTH ---
+  watch(
+    () => auth.user,
+    (u) => {
+      if (u) {
+        initListeners()
+      } else {
+        stopListeners()
+      }
+    },
+    { immediate: true },
+  )
 
   return {
-    subscriptions, // Exporting the objects, not just strings
+    subscriptions,
     resources,
+    publicFeeds,
     isLoading,
     addSource,
     removeSource,
     toggleSource,
-    shareFeedToLibrary,
     fetchAll,
-    publicFeeds,
-    fetchLibrary,
+    shareFeedToLibrary,
     subscribeFromLibrary,
     deleteFeedFromLibrary,
-  };
-});
+    updateFeedSettings,
+  }
+})
