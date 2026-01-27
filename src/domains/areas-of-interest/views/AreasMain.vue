@@ -3,8 +3,12 @@ import { ref, computed } from 'vue';
 import { useAreasStore } from '../store';
 import { useAuthStore } from '@/core/stores/auth';
 import { useAnalysisStore } from '@/domains/analysis-engine/store';
+
+// Modals
 import EditTagsModal from '../components/EditTagsModal.vue';
 import ViewContentModal from '../components/ViewContentModal.vue';
+import MoveItemModal from '../components/MoveItemModal.vue';   // <--- NEW
+import EditContentModal from '../components/EditContentModal.vue'; // <--- NEW
 
 const store = useAreasStore();
 const auth = useAuthStore();
@@ -14,10 +18,16 @@ const activeFilter = ref('');
 
 // --- MODAL STATE ---
 const isTagModalOpen = ref(false);
-const itemToEdit = ref<any>(null);
+const itemToEditTags = ref<any>(null);
 
 const isViewModalOpen = ref(false);
 const itemToView = ref<{ title: string; content: string } | null>(null);
+
+const isMoveModalOpen = ref(false);       // <--- NEW
+const itemToMove = ref<any>(null);        // <--- NEW
+
+const isEditContentModalOpen = ref(false); // <--- NEW
+const itemToEditContent = ref<any>(null);  // <--- NEW
 
 // --- ACTIONS ---
 
@@ -30,14 +40,24 @@ function openViewModal(item: any) {
 }
 
 function openTagModal(item: any) {
-    itemToEdit.value = item;
+    itemToEditTags.value = item;
     isTagModalOpen.value = true;
 }
 
+function openMoveModal(item: any) { // <--- NEW
+    itemToMove.value = item;
+    isMoveModalOpen.value = true;
+}
+
+function openEditContentModal(item: any) { // <--- NEW
+    itemToEditContent.value = item;
+    isEditContentModalOpen.value = true;
+}
+
 async function handleTagsSaved(newTags: string[]) {
-    if (itemToEdit.value) {
-        await store.updateItemTags(itemToEdit.value.id, newTags);
-        itemToEdit.value = null;
+    if (itemToEditTags.value) {
+        await store.updateItemTags(itemToEditTags.value.id, newTags);
+        itemToEditTags.value = null;
     }
 }
 
@@ -45,18 +65,13 @@ function hasReadableContent(item: any) {
     return item.type === 'note' || (item.content && typeof item.content === 'string');
 }
 
-// --- AI ANALYZE LOGIC (FIXED) ---
+// --- AI ANALYZE LOGIC ---
 async function handleAnalyze(item: any) {
-    // 1. Get the content safely
     const safeContent = (typeof item.content === 'string') ? item.content : '';
-
-    // 2. We MUST pass the URL so the Store can generate the ID.
-    // The Backend function will prefer 'safeContent' over scraping the URL,
-    // so privacy is maintained for Clipped Notes.
     await analysisStore.analyze({
         title: item.title,
         summary: safeContent,
-        url: item.sourceUrl // Always pass this!
+        url: item.sourceUrl
     });
 }
 
@@ -87,11 +102,18 @@ const availableTags = computed(() => {
             <div v-if="auth.user && store.areas.length === 0" class="empty-msg">
                 No areas yet.
             </div>
+
+            <div v-if="store.areas.length > 0" class="sidebar-tip">
+                <small>Select an area to view items.</small>
+            </div>
         </aside>
 
         <main class="areas-content">
             <div v-if="!store.selectedAreaId" class="placeholder">
-                Select an Area to view saved items.
+                <div class="placeholder-content">
+                    <h3>Welcome to your Knowledge Base</h3>
+                    <p>Select a folder on the left to organize your research.</p>
+                </div>
             </div>
 
             <div v-else>
@@ -152,19 +174,31 @@ const availableTags = computed(() => {
                                 :disabled="analysisStore.isAnalyzing">
                                 {{ analysisStore.isAnalyzing ? 'Thinking...' : '✨ Run Analysis' }}
                             </button>
-
-                            <div v-else class="no-url-msg">
-                                <small>Cannot analyze items without a source URL.</small>
-                            </div>
                         </div>
 
                         <div class="card-actions">
-                            <button v-if="hasReadableContent(item)" class="action-btn view-btn"
-                                @click="openViewModal(item)">
-                                📄 View Content
-                            </button>
-                            <button class="action-btn" @click="openTagModal(item)">🏷️ Edit Tags</button>
-                            <button class="action-btn delete" @click="store.deleteItem(item.id)">🗑️ Delete</button>
+                            <div class="primary-actions">
+                                <button v-if="hasReadableContent(item)" class="action-btn view-btn"
+                                    @click="openViewModal(item)" title="Read Content">
+                                    📄 Read
+                                </button>
+                                <button class="action-btn" @click="openEditContentModal(item)" title="Edit Content">
+                                    ✏️ Edit
+                                </button>
+                            </div>
+
+                            <div class="secondary-actions">
+                                <button class="action-btn" @click="openMoveModal(item)" title="Move to another folder">
+                                    📦 Move
+                                </button>
+                                <button class="action-btn" @click="openTagModal(item)" title="Edit Tags">
+                                    🏷️ Tag
+                                </button>
+                                <button class="action-btn delete" @click="store.deleteItem(item.id)"
+                                    title="Delete Item">
+                                    🗑️
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -172,15 +206,21 @@ const availableTags = computed(() => {
         </main>
     </div>
 
-    <EditTagsModal :is-open="isTagModalOpen" :initial-tags="itemToEdit?.tags || []" @save="handleTagsSaved"
+    <EditTagsModal :is-open="isTagModalOpen" :initial-tags="itemToEditTags?.tags || []" @save="handleTagsSaved"
         @close="isTagModalOpen = false" />
 
     <ViewContentModal :is-open="isViewModalOpen" :title="itemToView?.title || ''" :content="itemToView?.content || ''"
         @close="isViewModalOpen = false" />
+
+    <MoveItemModal :is-open="isMoveModalOpen" :item-id="itemToMove?.id || null" :current-area-id="store.selectedAreaId"
+        @saved="isMoveModalOpen = false" @close="isMoveModalOpen = false" />
+
+    <EditContentModal :is-open="isEditContentModalOpen" :item="itemToEditContent"
+        @saved="isEditContentModalOpen = false" @close="isEditContentModalOpen = false" />
 </template>
 
 <style scoped>
-/* Reuse existing styles */
+/* Layout */
 .areas-layout {
     display: flex;
     height: 100%;
@@ -191,6 +231,21 @@ const availableTags = computed(() => {
     background: #f8f9fa;
     padding: 1rem;
     border-right: 1px solid #ddd;
+    display: flex;
+    flex-direction: column;
+}
+
+.areas-content {
+    flex: 1;
+    padding: 2rem;
+    overflow-y: auto;
+}
+
+/* Sidebar */
+.areas-sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
 }
 
 .areas-sidebar li {
@@ -210,12 +265,28 @@ const availableTags = computed(() => {
     font-weight: bold;
 }
 
-.areas-content {
-    flex: 1;
-    padding: 2rem;
-    overflow-y: auto;
+.sidebar-tip {
+    margin-top: auto;
+    color: #888;
+    font-size: 0.8rem;
+    padding-top: 1rem;
+    text-align: center;
 }
 
+/* Placeholders */
+.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #888;
+}
+
+.placeholder-content {
+    text-align: center;
+}
+
+/* Header & Filters */
 .header {
     display: flex;
     justify-content: space-between;
@@ -253,19 +324,39 @@ const availableTags = computed(() => {
     font-weight: bold;
 }
 
+/* Item Card */
+.items-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
 .item-card {
     border: 1px solid #eee;
     padding: 1rem;
     border-radius: 8px;
-    margin-bottom: 1rem;
     background: white;
+    transition: box-shadow 0.2s;
 }
 
+.item-card:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* Card Content */
 .top-row {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.5rem;
+}
+
+.type-badge {
+    background: #eee;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
 }
 
 .mini-tag {
@@ -274,25 +365,23 @@ const availableTags = computed(() => {
     margin-left: 0.5rem;
 }
 
-.type-badge {
-    display: inline-block;
-    background: #eee;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    margin-bottom: 0.5rem;
-}
-
 .item-card h4 {
     margin: 0 0 0.5rem 0;
+    font-size: 1.1rem;
+}
+
+.item-card h4 a {
+    text-decoration: none;
+    color: #2c3e50;
 }
 
 .item-meta {
     font-size: 0.8rem;
     color: #888;
+    margin-bottom: 0.5rem;
 }
 
+/* AI & Spark */
 .spark-area {
     margin-top: 1rem;
     padding-top: 0.5rem;
@@ -332,19 +421,26 @@ const availableTags = computed(() => {
     background: #f39c12;
 }
 
+/* Actions */
 .card-actions {
     display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
+    justify-content: space-between;
+    align-items: center;
     margin-top: 1rem;
     padding-top: 0.5rem;
     border-top: 1px solid #f9f9f9;
 }
 
+.primary-actions,
+.secondary-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
 .action-btn {
     background: white;
     border: 1px solid #ddd;
-    padding: 4px 8px;
+    padding: 4px 10px;
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.8rem;
@@ -353,14 +449,25 @@ const availableTags = computed(() => {
 
 .action-btn:hover {
     background: #f4f4f4;
+    border-color: #ccc;
 }
 
-.action-btn.delete {
+.view-btn {
+    color: #2c3e50;
+    font-weight: 500;
+    border-color: #2c3e50;
+}
+
+.view-btn:hover {
+    background: #f0f4f8;
+}
+
+.delete {
     color: #e74c3c;
     border-color: #fadbd8;
 }
 
-.action-btn.delete:hover {
+.delete:hover {
     background: #fadbd8;
 }
 
@@ -371,22 +478,5 @@ const availableTags = computed(() => {
     padding: 4px 8px;
     border-radius: 4px;
     cursor: pointer;
-}
-
-.view-btn {
-    color: #2c3e50;
-    border-color: #2c3e50;
-    font-weight: 500;
-    margin-right: auto;
-}
-
-.view-btn:hover {
-    background: #f0f4f8;
-}
-
-.no-url-msg {
-    color: #888;
-    font-style: italic;
-    font-size: 0.8rem;
 }
 </style>
