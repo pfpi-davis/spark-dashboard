@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useAreasStore } from '../store';
-import { useItemsStore } from '@/core/stores/items'; // <--- NEW STORE
+import { useItemsStore } from '@/core/stores/items';
 import { useAuthStore } from '@/core/stores/auth';
 import { useAnalysisStore } from '@/core/stores/analysis';
 import AreaTreeItem from '../components/AreaTreeItem.vue';
@@ -16,7 +16,7 @@ import AddItemModal from '../components/AddItemModal.vue';
 import ActionStatusPicker from '../components/ActionStatusPicker.vue';
 
 const areasStore = useAreasStore();
-const itemsStore = useItemsStore(); // <--- Use this for items
+const itemsStore = useItemsStore();
 const auth = useAuthStore();
 const analysisStore = useAnalysisStore();
 
@@ -35,6 +35,22 @@ const itemToEditContent = ref<any>(null);
 const isAreaModalOpen = ref(false);
 const areaIdToEdit = ref<string | null>(null);
 const isAddItemModalOpen = ref(false);
+
+// --- INITIALIZE ---
+onMounted(() => {
+    // If no folder is selected (default), fetch EVERYTHING
+    if (!areasStore.selectedAreaId) {
+        itemsStore.fetchAll();
+    } else {
+        itemsStore.fetchByArea(areasStore.selectedAreaId);
+    }
+});
+
+function selectAllItems() {
+    areasStore.selectedAreaId = null;
+    itemsStore.fetchAll();
+    activeFilter.value = ''; // Reset filters for clarity
+}
 
 // --- ACTIONS ---
 function openCreateAreaModal() {
@@ -74,7 +90,6 @@ function openEditContentModal(item: any) {
     isEditContentModalOpen.value = true;
 }
 
-// FIX: Use itemsStore
 async function handleTagsSaved(newTags: string[]) {
     if (itemToEditTags.value) {
         await itemsStore.updateItemTags(itemToEditTags.value.id, newTags);
@@ -100,7 +115,11 @@ const currentArea = computed(() => {
     return areasStore.areas.find(a => a.id === areasStore.selectedAreaId);
 });
 
-// FIX: Filter from itemsStore.items
+// "All Items" View Title
+const pageTitle = computed(() => {
+    return currentArea.value ? currentArea.value.name : '🗃️ All Items';
+});
+
 const filteredItems = computed(() => {
     let items = itemsStore.items;
 
@@ -135,139 +154,133 @@ const availableTags = computed(() => {
                 <button class="add-area-btn" @click="openCreateAreaModal" title="New Folder">+</button>
             </div>
 
+            <div class="all-items-row" :class="{ active: !areasStore.selectedAreaId }" @click="selectAllItems">
+                🗃️ All Items
+            </div>
+
             <ul>
                 <AreaTreeItem v-for="rootArea in areasStore.areaTree" :key="rootArea.id" :area="rootArea" :depth="0" />
             </ul>
-            <div v-if="auth.user && areasStore.areas.length === 0" class="empty-msg">
-                No areas yet. Click + to create one.
-            </div>
         </aside>
 
         <main class="areas-content">
-            <div v-if="!areasStore.selectedAreaId" class="placeholder">
-                <div class="placeholder-content">
-                    <h3>Welcome to your Knowledge Base</h3>
-                    <p>Select a folder on the left or create a new one.</p>
-                    <button class="primary-btn" @click="openCreateAreaModal">Create First Folder</button>
+            <div class="area-header-block">
+                <div class="title-row">
+                    <h2>{{ pageTitle }}</h2>
+                    <button v-if="currentArea" class="icon-btn edit-area-btn"
+                        @click="openEditAreaModal(areasStore.selectedAreaId!)" title="Edit Folder">
+                        ✏️
+                    </button>
+                </div>
+                <p v-if="currentArea?.description" class="area-desc">{{ currentArea.description }}</p>
+                <p v-else-if="!currentArea" class="area-desc">Viewing all items from all folders.</p>
+            </div>
+
+            <div class="items-header">
+                <div class="header-left">
+                    <h3>Items</h3>
+                    <button class="primary-btn sm-btn" @click="openAddItemModal">
+                        + Add Entry
+                    </button>
+                </div>
+
+                <div class="header-right">
+                    <div class="search-wrapper">
+                        <span class="search-icon">🔍</span>
+                        <input v-model="searchQuery" placeholder="Search items..." class="search-input" />
+                        <button v-if="searchQuery" class="clear-btn" @click="searchQuery = ''">×</button>
+                    </div>
+
+                    <div class="filter-bar" v-if="availableTags.length > 0">
+                        <span>Filter:</span>
+                        <button class="tag-pill" :class="{ active: activeFilter === '' }" @click="activeFilter = ''">
+                            All
+                        </button>
+                        <button v-for="tag in availableTags" :key="tag" class="tag-pill"
+                            :class="{ active: activeFilter === tag }" @click="activeFilter = tag">
+                            #{{ tag }}
+                        </button>
+                    </div>
+
+                    <button v-if="currentArea" @click="areasStore.deleteArea(areasStore.selectedAreaId!)"
+                        class="delete-btn text-danger">
+                        Delete Folder
+                    </button>
                 </div>
             </div>
 
-            <div v-else>
-                <div class="area-header-block">
-                    <div class="title-row">
-                        <h2>{{ currentArea?.name }}</h2>
-                        <button class="icon-btn edit-area-btn" @click="openEditAreaModal(areasStore.selectedAreaId!)"
-                            title="Edit Folder">
-                            ✏️
+            <div class="items-grid">
+                <div v-for="item in filteredItems" :key="item.id" class="item-card">
+
+                    <div class="top-row">
+                        <div class="type-badge">{{ item.type }}</div>
+                        <div class="tags-list">
+                            <span v-for="tag in item.tags" :key="tag" class="mini-tag">#{{ tag }}</span>
+                        </div>
+                    </div>
+
+                    <h4>
+                        <a v-if="item.sourceUrl" :href="item.sourceUrl" target="_blank">{{ item.title }}</a>
+                        <span v-else>{{ item.title }}</span>
+                    </h4>
+
+                    <div class="item-meta">
+                        Saved: {{ item.savedAt?.toDate().toLocaleDateString() }}
+                    </div>
+
+                    <div v-if="item.type === 'spark'" class="spark-preview">
+                        ✨ {{ item.content.summary }}
+                    </div>
+
+                    <div v-else class="spark-area">
+                        <div v-if="item.sourceUrl && analysisStore.getSpark(item.sourceUrl)" class="spark-preview">
+                            <div class="ai-header">
+                                <strong>✨ Spark Analysis</strong>
+                                <span class="relevance-badge">
+                                    {{ analysisStore.getSpark(item.sourceUrl).relevance }}
+                                </span>
+                            </div>
+                            {{ analysisStore.getSpark(item.sourceUrl).summary }}
+                        </div>
+
+                        <button v-else-if="item.sourceUrl" class="spark-btn" @click="handleAnalyze(item)"
+                            :disabled="analysisStore.isAnalyzing">
+                            {{ analysisStore.isAnalyzing ? 'Thinking...' : '✨ Run Analysis' }}
                         </button>
                     </div>
-                    <p v-if="currentArea?.description" class="area-desc">{{ currentArea.description }}</p>
+
+                    <div class="card-actions">
+                        <div class="primary-actions">
+                            <button v-if="hasReadableContent(item)" class="action-btn view-btn"
+                                @click="openViewModal(item)" title="Read Content">
+                                📄 Read
+                            </button>
+                            <button class="action-btn" @click="openEditContentModal(item)" title="Edit Content">
+                                ✏️ Edit
+                            </button>
+                            <ActionStatusPicker :item="item" />
+                        </div>
+
+                        <div class="secondary-actions">
+                            <button class="action-btn" @click="openMoveModal(item)" title="Move">
+                                📦 Move
+                            </button>
+                            <button class="action-btn" @click="openTagModal(item)" title="Tag">
+                                🏷️ Tag
+                            </button>
+                            <button class="action-btn delete" @click="itemsStore.deleteItem(item.id)" title="Delete">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
                 </div>
 
-                <div class="items-header">
-                    <div class="header-left">
-                        <h3>Items</h3>
-                        <button class="primary-btn sm-btn" @click="openAddItemModal">
-                            + Add Entry
-                        </button>
-                    </div>
-
-                    <div class="header-right">
-                        <div class="search-wrapper">
-                            <span class="search-icon">🔍</span>
-                            <input v-model="searchQuery" placeholder="Search items..." class="search-input" />
-                            <button v-if="searchQuery" class="clear-btn" @click="searchQuery = ''">×</button>
-                        </div>
-
-                        <div class="filter-bar" v-if="availableTags.length > 0">
-                            <span>Filter:</span>
-                            <button class="tag-pill" :class="{ active: activeFilter === '' }"
-                                @click="activeFilter = ''">
-                                All
-                            </button>
-                            <button v-for="tag in availableTags" :key="tag" class="tag-pill"
-                                :class="{ active: activeFilter === tag }" @click="activeFilter = tag">
-                                #{{ tag }}
-                            </button>
-                        </div>
-
-                        <button @click="areasStore.deleteArea(areasStore.selectedAreaId!)"
-                            class="delete-btn text-danger">
-                            Delete Folder
-                        </button>
-                    </div>
+                <div v-if="filteredItems.length === 0 && (searchQuery || activeFilter)" class="no-results">
+                    <p>No items match your filters.</p>
+                    <button class="text-btn" @click="searchQuery = ''; activeFilter = ''">Clear Filters</button>
                 </div>
-
-                <div class="items-grid">
-                    <div v-for="item in filteredItems" :key="item.id" class="item-card">
-                        <div class="top-row">
-                            <div class="type-badge">{{ item.type }}</div>
-                            <div class="tags-list">
-                                <span v-for="tag in item.tags" :key="tag" class="mini-tag">#{{ tag }}</span>
-                            </div>
-                        </div>
-
-                        <h4>
-                            <a v-if="item.sourceUrl" :href="item.sourceUrl" target="_blank">{{ item.title }}</a>
-                            <span v-else>{{ item.title }}</span>
-                        </h4>
-
-                        <div class="item-meta">
-                            Saved: {{ item.savedAt?.toDate().toLocaleDateString() }}
-                        </div>
-
-                        <div v-if="item.type === 'spark'" class="spark-preview">
-                            ✨ {{ item.content.summary }}
-                        </div>
-
-                        <div v-else class="spark-area">
-                            <div v-if="item.sourceUrl && analysisStore.getSpark(item.sourceUrl)" class="spark-preview">
-                                <div class="ai-header">
-                                    <strong>✨ Spark Analysis</strong>
-                                    <span class="relevance-badge">
-                                        {{ analysisStore.getSpark(item.sourceUrl).relevance }}
-                                    </span>
-                                </div>
-                                {{ analysisStore.getSpark(item.sourceUrl).summary }}
-                            </div>
-
-                            <button v-else-if="item.sourceUrl" class="spark-btn" @click="handleAnalyze(item)"
-                                :disabled="analysisStore.isAnalyzing">
-                                {{ analysisStore.isAnalyzing ? 'Thinking...' : '✨ Run Analysis' }}
-                            </button>
-                        </div>
-
-                        <div class="card-actions">
-                            <div class="primary-actions">
-                                <button v-if="hasReadableContent(item)" class="action-btn view-btn"
-                                    @click="openViewModal(item)" title="Read Content">
-                                    📄 Read
-                                </button>
-                                <button class="action-btn" @click="openEditContentModal(item)" title="Edit Content">
-                                    ✏️ Edit
-                                </button>
-                                <ActionStatusPicker :item="item" />
-                            </div>
-
-                            <div class="secondary-actions">
-                                <button class="action-btn" @click="openMoveModal(item)" title="Move">
-                                    📦 Move
-                                </button>
-                                <button class="action-btn" @click="openTagModal(item)" title="Tag">
-                                    🏷️ Tag
-                                </button>
-                                <button class="action-btn delete" @click="itemsStore.deleteItem(item.id)"
-                                    title="Delete">
-                                    🗑️
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div v-if="filteredItems.length === 0 && (searchQuery || activeFilter)" class="no-results">
-                        <p>No items match your filters.</p>
-                        <button class="text-btn" @click="searchQuery = ''; activeFilter = ''">Clear Filters</button>
-                    </div>
+                <div v-if="filteredItems.length === 0 && !searchQuery && !activeFilter" class="no-results">
+                    <p>No items found.</p>
                 </div>
             </div>
         </main>
@@ -275,27 +288,21 @@ const availableTags = computed(() => {
 
     <EditTagsModal :is-open="isTagModalOpen" :initial-tags="itemToEditTags?.tags || []" @save="handleTagsSaved"
         @close="isTagModalOpen = false" />
-
     <ReaderModal :is-open="isViewModalOpen" :title="itemToView?.title || ''" :content="itemToView?.content || ''"
         @close="isViewModalOpen = false" />
-
     <MoveItemModal :is-open="isMoveModalOpen" :item-id="itemToMove?.id || null"
         :current-area-id="areasStore.selectedAreaId" @saved="isMoveModalOpen = false"
         @close="isMoveModalOpen = false" />
-
     <EditContentModal :is-open="isEditContentModalOpen" :item="itemToEditContent"
         @saved="isEditContentModalOpen = false" @close="isEditContentModalOpen = false" />
-
     <AreaFormModal :is-open="isAreaModalOpen" :edit-id="areaIdToEdit" @saved="isAreaModalOpen = false"
         @close="isAreaModalOpen = false" />
-
     <AddItemModal :is-open="isAddItemModalOpen" :area-id="areasStore.selectedAreaId" @saved="isAddItemModalOpen = false"
         @close="isAddItemModalOpen = false" />
 </template>
 
 <style scoped>
-/* (Reuse existing styles) */
-/* Include the full style block from the previous file content */
+/* Layout */
 .areas-layout {
     display: flex;
     height: 100%;
@@ -316,6 +323,7 @@ const availableTags = computed(() => {
     overflow-y: auto;
 }
 
+/* Sidebar */
 .sidebar-header {
     display: flex;
     justify-content: space-between;
@@ -351,6 +359,26 @@ const availableTags = computed(() => {
     margin: 0;
 }
 
+/* NEW: All Items Row */
+.all-items-row {
+    padding: 8px;
+    margin-bottom: 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 500;
+    color: #333;
+}
+
+.all-items-row:hover {
+    background: #e9ecef;
+}
+
+.all-items-row.active {
+    background: #34495e;
+    color: white;
+}
+
+/* Headers */
 .area-header-block {
     margin-bottom: 2rem;
 }
@@ -386,6 +414,7 @@ const availableTags = computed(() => {
     line-height: 1.5;
 }
 
+/* Items Toolbar */
 .items-header {
     display: flex;
     justify-content: space-between;
@@ -506,6 +535,7 @@ const availableTags = computed(() => {
     font-weight: bold;
 }
 
+/* Grid & Cards */
 .items-grid {
     display: flex;
     flex-direction: column;

@@ -1,15 +1,17 @@
-import type { SparkPlugin } from '@/core/types/plugin';
-import AreasMain from './views/AreasMain.vue';
+import type { SparkPlugin } from '@/core/types/plugin'
+import AreasMain from './views/AreasMain.vue'
+import AreasWidget from './components/AreasWidget.vue' // <--- Import
 
 const AreasPlugin: SparkPlugin = {
   manifest: {
     id: 'areas-of-interest',
     name: 'Knowledge Base',
     icon: 'folder_special',
-    description: 'Organize your research'
+    description: 'Organize your research',
   },
   components: {
     mainView: AreasMain,
+    dashboardWidget: AreasWidget, // <--- Register
   },
   routes: [
     {
@@ -18,6 +20,6 @@ const AreasPlugin: SparkPlugin = {
       component: AreasMain,
     },
   ],
-};
+}
 
-export default AreasPlugin;
+export default AreasPlugin

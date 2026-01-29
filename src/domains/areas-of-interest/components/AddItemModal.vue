@@ -1,34 +1,40 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { useItemsStore } from '@/core/stores/items'; // <--- NEW STORE
+import { useItemsStore } from '@/core/stores/items';
+import { useAreasStore } from '../store'; // Need this to list folders
 import RichEditor from '@/core/components/RichEditor.vue';
 
 const props = defineProps<{
     isOpen: boolean;
-    areaId: string | null;
+    areaId: string | null; // Can be null now!
 }>();
 
 const emit = defineEmits(['close', 'saved']);
-const store = useItemsStore(); // <--- Use itemsStore
+const itemsStore = useItemsStore();
+const areasStore = useAreasStore();
 
 const title = ref('');
 const url = ref('');
 const content = ref('');
+const selectedAreaId = ref('');
 
+// Reset fields when opening
 watch(() => props.isOpen, (val) => {
     if (val) {
         title.value = '';
         url.value = '';
         content.value = '';
+        // If a specific area was passed, lock it in. Otherwise reset.
+        selectedAreaId.value = props.areaId || '';
     }
 });
 
 async function handleSubmit() {
-    if (!props.areaId || !title.value.trim()) return;
+    // specific validation: must have title AND a folder selected
+    if (!title.value.trim() || !selectedAreaId.value) return;
 
-    // FIX: call createItem on itemsStore
-    await store.createItem(
-        props.areaId,
+    await itemsStore.createItem(
+        selectedAreaId.value,
         {
             title: title.value,
             sourceUrl: url.value || null,
@@ -52,6 +58,17 @@ async function handleSubmit() {
             </header>
 
             <div class="form-body">
+
+                <div v-if="!areaId" class="input-group">
+                    <label>Save to Folder <span class="required">*</span></label>
+                    <select v-model="selectedAreaId" class="full-width">
+                        <option value="" disabled>-- Select Folder --</option>
+                        <option v-for="area in areasStore.areas" :key="area.id" :value="area.id">
+                            {{ area.name }}
+                        </option>
+                    </select>
+                </div>
+
                 <div class="input-group">
                     <label>Title <span class="required">*</span></label>
                     <input v-model="title" placeholder="e.g. Notes from Biomass Conference" class="full-width" />
@@ -72,14 +89,14 @@ async function handleSubmit() {
 
             <footer>
                 <button class="text-btn" @click="emit('close')">Cancel</button>
-                <button class="primary-btn" @click="handleSubmit" :disabled="!title">Save Entry</button>
+                <button class="primary-btn" @click="handleSubmit" :disabled="!title || !selectedAreaId">Save
+                    Entry</button>
             </footer>
         </div>
     </div>
 </template>
 
 <style scoped>
-/* Reuse existing styles */
 .modal-backdrop {
     position: fixed;
     top: 0;
