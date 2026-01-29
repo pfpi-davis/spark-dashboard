@@ -7,13 +7,15 @@ import { useItemsStore } from '@/core/stores/items';
 import AreasSidebar from '../components/AreasSidebar.vue';
 import ItemCard from '../components/ItemCard.vue';
 
-// Modals
-import EditTagsModal from '../components/EditTagsModal.vue';
+// Modals (Core)
+import AddItemModal from '@/core/components/items/AddItemModal.vue';
+import MoveItemModal from '@/core/components/items/MoveItemModal.vue';
+import EditContentModal from '@/core/components/items/EditContentModal.vue';
+import EditTagsModal from '@/core/components/items/EditTagsModal.vue';
 import ReaderModal from '@/core/components/ReaderModal.vue';
-import MoveItemModal from '../components/MoveItemModal.vue';
-import EditContentModal from '../components/EditContentModal.vue';
+
+// Modals (Local)
 import AreaFormModal from '../components/AreaFormModal.vue';
-import AddItemModal from '../components/AddItemModal.vue';
 
 const areasStore = useAreasStore();
 const itemsStore = useItemsStore();
@@ -21,10 +23,10 @@ const itemsStore = useItemsStore();
 // --- STATE ---
 const activeFilter = ref(''); // Tag Filter
 const searchQuery = ref('');
-const typeFilter = ref('');   // NEW: Type Filter
-const actionFilter = ref(''); // NEW: Action Filter
+const typeFilter = ref('');   // Type Filter
+const actionFilter = ref(''); // Action Filter
 
-// Dropdown States
+// Dropdown States (Tag Menu)
 const isTagMenuOpen = ref(false);
 const tagSearchQuery = ref('');
 const tagMenuRef = ref<HTMLElement | null>(null);
@@ -46,6 +48,7 @@ const isAddItemModalOpen = ref(false);
 // --- LIFECYCLE ---
 onMounted(() => {
     document.addEventListener('click', handleClickOutside);
+    // Initial fetch based on selection
     if (!areasStore.selectedAreaId) itemsStore.fetchAll();
     else itemsStore.fetchByArea(areasStore.selectedAreaId);
 });
@@ -79,11 +82,12 @@ function openCreateAreaModal() { areaIdToEdit.value = null; isAreaModalOpen.valu
 function openEditAreaModal(id: string) { areaIdToEdit.value = id; isAreaModalOpen.value = true; }
 function openAddItemModal() { isAddItemModalOpen.value = true; }
 
+// Item Card Event Handlers
 function onRead(item: any) { itemToView.value = { title: item.title, content: item.content }; isViewModalOpen.value = true; }
 function onEditContent(item: any) { itemToEditContent.value = item; isEditContentModalOpen.value = true; }
 function onMove(item: any) { itemToMove.value = item; isMoveModalOpen.value = true; }
 function onTag(item: any) { itemToEditTags.value = item; isTagModalOpen.value = true; }
-function onFilterTag(tag: string) { activeFilter.value = tag; } // NEW: Handle tag click from card
+function onFilterTag(tag: string) { activeFilter.value = tag; }
 
 async function handleTagsSaved(newTags: string[]) {
     if (itemToEditTags.value) {
@@ -182,6 +186,7 @@ const displayedTags = computed(() => !tagSearchQuery.value ? availableTags.value
                         <button class="filter-trigger" @click="toggleTagMenu" :class="{ 'has-filter': activeFilter }">
                             <span v-if="!activeFilter">🏷️ Tags</span>
                             <span v-else>#{{ activeFilter }}</span>
+                            <span class="arrow">▼</span>
                         </button>
                         <div v-if="isTagMenuOpen" class="tag-dropdown-menu">
                             <div class="tag-search-box">
@@ -218,17 +223,22 @@ const displayedTags = computed(() => !tagSearchQuery.value ? availableTags.value
 
     <EditTagsModal :is-open="isTagModalOpen" :initial-tags="itemToEditTags?.tags || []" @save="handleTagsSaved"
         @close="isTagModalOpen = false" />
+
     <ReaderModal :is-open="isViewModalOpen" :title="itemToView?.title || ''" :content="itemToView?.content || ''"
         @close="isViewModalOpen = false" />
-    <MoveItemModal :is-open="isMoveModalOpen" :item-id="itemToMove?.id || null"
+
+    <MoveItemModal :is-open="isMoveModalOpen" :folders="areasStore.areas" :item-id="itemToMove?.id || null"
         :current-area-id="areasStore.selectedAreaId" @saved="isMoveModalOpen = false"
         @close="isMoveModalOpen = false" />
+
     <EditContentModal :is-open="isEditContentModalOpen" :item="itemToEditContent"
         @saved="isEditContentModalOpen = false" @close="isEditContentModalOpen = false" />
+
     <AreaFormModal :is-open="isAreaModalOpen" :edit-id="areaIdToEdit" @saved="isAreaModalOpen = false"
         @close="isAreaModalOpen = false" />
-    <AddItemModal :is-open="isAddItemModalOpen" :area-id="areasStore.selectedAreaId" @saved="isAddItemModalOpen = false"
-        @close="isAddItemModalOpen = false" />
+
+    <AddItemModal :is-open="isAddItemModalOpen" :folders="areasStore.areas" :initial-area-id="areasStore.selectedAreaId"
+        @saved="isAddItemModalOpen = false" @close="isAddItemModalOpen = false" />
 </template>
 
 <style scoped>
@@ -376,6 +386,11 @@ const displayedTags = computed(() => !tagSearchQuery.value ? availableTags.value
     background: #3498db;
     color: white;
     border-color: #3498db;
+}
+
+.arrow {
+    font-size: 0.7rem;
+    margin-left: 2px;
 }
 
 .tag-dropdown-menu {

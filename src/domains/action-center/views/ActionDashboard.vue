@@ -1,20 +1,30 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { useItemsStore } from '@/core/stores/items'; // <--- UPDATED
+import { useItemsStore } from '@/core/stores/items';   // <--- 1. For Items
+import { useAreasStore } from '@/domains/areas-of-interest/store'; // <--- 2. For Folders
 import type { SavedItem, ActionStatus } from '@/core/types/items';
 import ReaderModal from '@/core/components/ReaderModal.vue';
+import AddItemModal from '@/core/components/items/AddItemModal.vue';
 
-const store = useItemsStore();
+const itemsStore = useItemsStore();
+const areasStore = useAreasStore();
 
 onMounted(() => {
-    store.fetchAll(); // <--- This function is now in itemsStore
+    itemsStore.fetchAll(); // Correct method from itemsStore
+    // areasStore is auto-synced by its own watcher, so we don't need to fetch it manually
 });
 
+// --- STATE ---
 const isViewModalOpen = ref(false);
 const itemToView = ref<{ title: string; content: string } | null>(null);
 
+const isAddItemModalOpen = ref(false);
+const addItemStatus = ref<ActionStatus>('inbox');
+
+// --- QUEUES ---
+// Use itemsStore.items (not activeItems)
 const queues = computed(() => {
-    const items = store.items; // <--- Access items from itemsStore
+    const items = itemsStore.items;
     return {
         analyze: items.filter(i => i.actionStatus === 'to_analyze'),
         write: items.filter(i => i.actionStatus === 'to_write'),
@@ -22,12 +32,9 @@ const queues = computed(() => {
     };
 });
 
+// --- ACTIONS ---
 function move(item: SavedItem, status: ActionStatus) {
-    store.updateItemStatus(item.id, status);
-}
-
-function openLink(url?: string | null) {
-    if (url) window.open(url, '_blank');
+    itemsStore.updateItemStatus(item.id, status);
 }
 
 function openViewModal(item: SavedItem) {
@@ -36,6 +43,41 @@ function openViewModal(item: SavedItem) {
         content: item.content || ''
     };
     isViewModalOpen.value = true;
+}
+
+function openAddModal(status: ActionStatus) {
+    addItemStatus.value = status;
+    isAddItemModalOpen.value = true;
+}
+
+// --- DRAG AND DROP HANDLERS ---
+const isDragOver = ref<string | null>(null);
+
+function onDragStart(event: DragEvent, item: SavedItem) {
+    if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('application/json', JSON.stringify({ itemId: item.id }));
+    }
+}
+
+function onDragEnter(colName: string) {
+    isDragOver.value = colName;
+}
+
+async function onDrop(event: DragEvent, status: ActionStatus) {
+    isDragOver.value = null;
+    const data = event.dataTransfer?.getData('application/json');
+    if (!data) return;
+
+    try {
+        const payload = JSON.parse(data);
+        if (payload.itemId) {
+            await itemsStore.updateItemStatus(payload.itemId, status);
+        }
+    } catch (e) {
+        console.error("Drop failed", e);
+    }
 }
 </script>
 
@@ -47,53 +89,63 @@ function openViewModal(item: SavedItem) {
         </header>
 
         <div class="dashboard-grid">
-            <section class="queue-col analyze-col">
+
+            <section class="queue-col analyze-col" :class="{ 'drag-hover': isDragOver === 'analyze' }"
+                @dragover.prevent="onDragEnter('analyze')" @dragleave="isDragOver = null"
+                @drop="onDrop($event, 'to_analyze')">
                 <div class="col-header">
                     <h3>🧐 To Analyze ({{ queues.analyze.length }})</h3>
+                    <button class="add-btn" @click="openAddModal('to_analyze')" title="Add Task">+</button>
                 </div>
                 <div class="list-container">
-                    <div v-for="item in queues.analyze" :key="item.id" class="task-row">
+                    <div v-for="item in queues.analyze" :key="item.id" class="task-row" draggable="true"
+                        @dragstart="onDragStart($event, item)">
                         <div class="task-main">
                             <span class="type-dot note"></span>
                             <span class="task-title" @click="openViewModal(item)">{{ item.title }}</span>
                         </div>
                         <div class="task-actions">
                             <button @click="openViewModal(item)">📄 View</button>
-                            <button @click="move(item, 'to_write')" title="Promote to Write">➡️ Write</button>
-                            <button @click="move(item, 'to_share')" title="Promote to Share">➡️ Share</button>
-                            <button @click="move(item, 'reference')" class="done-btn" title="Archive">✅ Done</button>
+                            <button @click="move(item, 'to_write')" title="Promote">➡️ Write</button>
                         </div>
                     </div>
                     <div v-if="queues.analyze.length === 0" class="empty-state">Nothing to analyze.</div>
                 </div>
             </section>
 
-            <section class="queue-col write-col">
+            <section class="queue-col write-col" :class="{ 'drag-hover': isDragOver === 'write' }"
+                @dragover.prevent="onDragEnter('write')" @dragleave="isDragOver = null"
+                @drop="onDrop($event, 'to_write')">
                 <div class="col-header">
                     <h3>✍️ To Write ({{ queues.write.length }})</h3>
+                    <button class="add-btn" @click="openAddModal('to_write')" title="Add Task">+</button>
                 </div>
                 <div class="list-container">
-                    <div v-for="item in queues.write" :key="item.id" class="task-row">
+                    <div v-for="item in queues.write" :key="item.id" class="task-row" draggable="true"
+                        @dragstart="onDragStart($event, item)">
                         <div class="task-main">
                             <span class="type-dot write"></span>
                             <span class="task-title" @click="openViewModal(item)">{{ item.title }}</span>
                         </div>
                         <div class="task-actions">
                             <button @click="openViewModal(item)">📄 View</button>
-                            <button @click="move(item, 'to_share')" title="Promote to Share">➡️ Share</button>
-                            <button @click="move(item, 'reference')" class="done-btn" title="Archive">✅ Done</button>
+                            <button @click="move(item, 'to_share')" title="Promote">➡️ Share</button>
                         </div>
                     </div>
                     <div v-if="queues.write.length === 0" class="empty-state">Nothing in writing queue.</div>
                 </div>
             </section>
 
-            <section class="queue-col share-col">
+            <section class="queue-col share-col" :class="{ 'drag-hover': isDragOver === 'share' }"
+                @dragover.prevent="onDragEnter('share')" @dragleave="isDragOver = null"
+                @drop="onDrop($event, 'to_share')">
                 <div class="col-header">
                     <h3>📤 To Share ({{ queues.share.length }})</h3>
+                    <button class="add-btn" @click="openAddModal('to_share')" title="Add Task">+</button>
                 </div>
                 <div class="list-container">
-                    <div v-for="item in queues.share" :key="item.id" class="task-row">
+                    <div v-for="item in queues.share" :key="item.id" class="task-row" draggable="true"
+                        @dragstart="onDragStart($event, item)">
                         <div class="task-main">
                             <span class="type-dot share"></span>
                             <span class="task-title" @click="openViewModal(item)">{{ item.title }}</span>
@@ -106,15 +158,19 @@ function openViewModal(item: SavedItem) {
                     <div v-if="queues.share.length === 0" class="empty-state">Nothing to share.</div>
                 </div>
             </section>
+
         </div>
 
         <ReaderModal :is-open="isViewModalOpen" :title="itemToView?.title || ''" :content="itemToView?.content || ''"
             @close="isViewModalOpen = false" />
+
+        <AddItemModal :is-open="isAddItemModalOpen" :folders="areasStore.areas" :initial-area-id="null"
+            :initial-status="addItemStatus" @saved="isAddItemModalOpen = false" @close="isAddItemModalOpen = false" />
     </div>
 </template>
 
 <style scoped>
-/* Reuse existing styles */
+/* (Reuse style block from previous turn) */
 .command-center {
     padding: 2rem;
     height: 100%;
@@ -150,19 +206,49 @@ p {
     display: flex;
     flex-direction: column;
     border: 1px solid #eee;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+/* Drag Hover Effects */
+.queue-col.drag-hover {
+    background: #eef2f5;
+    border: 2px dashed #3498db;
 }
 
 .col-header {
-    padding: 1rem;
+    padding: 0.75rem 1rem;
     border-bottom: 1px solid #ddd;
     background: white;
     border-radius: 8px 8px 0 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 }
 
 .col-header h3 {
     margin: 0;
     font-size: 1.1rem;
     color: #333;
+}
+
+/* Add Button in Header */
+.add-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-weight: bold;
+    color: #555;
+}
+
+.add-btn:hover {
+    background: #eee;
+    color: #2c3e50;
 }
 
 .analyze-col .col-header {
@@ -193,6 +279,11 @@ p {
     flex-direction: column;
     gap: 0.5rem;
     transition: transform 0.1s;
+    cursor: grab;
+}
+
+.task-row:active {
+    cursor: grabbing;
 }
 
 .task-row:hover {

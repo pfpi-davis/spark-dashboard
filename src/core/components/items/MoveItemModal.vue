@@ -1,23 +1,21 @@
 <script setup lang="ts">
 import { ref, watch, computed, nextTick } from 'vue';
-import { useAreasStore } from '../store';
 import { useItemsStore } from '@/core/stores/items';
 
 const props = defineProps<{
     isOpen: boolean;
+    folders: { id: string; name: string }[]; // <--- NEW: Prop
     itemId: string | null;
     currentAreaId: string | null;
 }>();
 
 const emit = defineEmits(['close', 'saved']);
-const areasStore = useAreasStore();
 const itemsStore = useItemsStore();
 
 const searchQuery = ref('');
 const selectedArea = ref('');
 const inputRef = ref<HTMLInputElement | null>(null);
 
-// Reset when opened
 watch(() => props.isOpen, (val) => {
     if (val) {
         selectedArea.value = '';
@@ -26,13 +24,10 @@ watch(() => props.isOpen, (val) => {
     }
 });
 
-// Filter folders
-const filteredAreas = computed(() => {
+const filteredFolders = computed(() => {
     const q = searchQuery.value.toLowerCase();
-    return areasStore.areas.filter(a => {
-        // Exclude current folder
+    return props.folders.filter(a => {
         if (a.id === props.currentAreaId) return false;
-        // Match name
         return a.name.toLowerCase().includes(q);
     });
 });
@@ -43,32 +38,24 @@ async function handleMove() {
     emit('saved');
     emit('close');
 }
-
-function selectArea(id: string) {
-    selectedArea.value = id;
-}
 </script>
 
 <template>
     <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
         <div class="modal-content">
             <h3>📦 Move Item</h3>
-
             <div class="input-group">
                 <label>Select Destination:</label>
                 <input ref="inputRef" v-model="searchQuery" class="search-input" placeholder="Search folders..." />
 
                 <div class="folder-list">
-                    <div v-for="area in filteredAreas" :key="area.id" class="folder-option"
-                        :class="{ selected: selectedArea === area.id }" @click="selectArea(area.id)">
+                    <div v-for="area in filteredFolders" :key="area.id" class="folder-option"
+                        :class="{ selected: selectedArea === area.id }" @click="selectedArea = area.id">
                         📁 {{ area.name }}
                     </div>
-                    <div v-if="filteredAreas.length === 0" class="empty-msg">
-                        No folders found.
-                    </div>
+                    <div v-if="filteredFolders.length === 0" class="empty-msg">No folders found.</div>
                 </div>
             </div>
-
             <div class="actions">
                 <button class="text-btn" @click="emit('close')">Cancel</button>
                 <button class="primary-btn" @click="handleMove" :disabled="!selectedArea">Move</button>
@@ -78,6 +65,7 @@ function selectArea(id: string) {
 </template>
 
 <style scoped>
+/* Reuse styles from previous MoveItemModal */
 .modal-backdrop {
     position: fixed;
     top: 0;

@@ -1,22 +1,29 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useItemsStore } from '@/core/stores/items';
-import { useAreasStore } from '../store'; // Need this to list folders
 import RichEditor from '@/core/components/RichEditor.vue';
+import type { ActionStatus } from '@/core/types/items';
 
 const props = defineProps<{
     isOpen: boolean;
-    areaId: string | null; // Can be null now!
+    folders: { id: string; name: string }[]; // <--- Received as prop (Decoupled)
+    initialAreaId?: string | null;
+    initialStatus?: ActionStatus;
 }>();
 
 const emit = defineEmits(['close', 'saved']);
 const itemsStore = useItemsStore();
-const areasStore = useAreasStore();
 
+// Form Data
 const title = ref('');
 const url = ref('');
 const content = ref('');
 const selectedAreaId = ref('');
+
+// Combobox / Search State
+const searchQuery = ref('');
+const isDropdownOpen = ref(false);
+const comboboxRef = ref<HTMLElement | null>(null);
 
 // Reset fields when opening
 watch(() => props.isOpen, (val) => {
@@ -24,14 +31,50 @@ watch(() => props.isOpen, (val) => {
         title.value = '';
         url.value = '';
         content.value = '';
-        // If a specific area was passed, lock it in. Otherwise reset.
-        selectedAreaId.value = props.areaId || '';
+
+        if (props.initialAreaId) {
+            selectedAreaId.value = props.initialAreaId;
+            searchQuery.value = '';
+        } else {
+            selectedAreaId.value = '';
+            searchQuery.value = '';
+        }
+        isDropdownOpen.value = false;
     }
 });
 
+// Filter folders based on search
+const filteredFolders = computed(() => {
+    const q = searchQuery.value.toLowerCase();
+    return props.folders.filter(f => f.name.toLowerCase().includes(q));
+});
+
+function selectFolder(folder: { id: string; name: string }) {
+    selectedAreaId.value = folder.id;
+    searchQuery.value = folder.name;
+    isDropdownOpen.value = false;
+}
+
+function openDropdown() {
+    isDropdownOpen.value = true;
+    // If specific folder selected, prepopulate search so user sees what it is
+    if (!searchQuery.value && selectedAreaId.value) {
+        const f = props.folders.find(a => a.id === selectedAreaId.value);
+        if (f) searchQuery.value = f.name;
+    }
+}
+
+function handleClickOutside(event: MouseEvent) {
+    if (comboboxRef.value && !comboboxRef.value.contains(event.target as Node)) {
+        isDropdownOpen.value = false;
+    }
+}
+
+onMounted(() => document.addEventListener('click', handleClickOutside));
+onUnmounted(() => document.removeEventListener('click', handleClickOutside));
+
 async function handleSubmit() {
-    // specific validation: must have title AND a folder selected
-    if (!title.value.trim() || !selectedAreaId.value) return;
+    if (!selectedAreaId.value || !title.value.trim()) return;
 
     await itemsStore.createItem(
         selectedAreaId.value,
@@ -39,7 +82,8 @@ async function handleSubmit() {
             title: title.value,
             sourceUrl: url.value || null,
             type: 'note',
-            content: content.value
+            content: content.value,
+            actionStatus: props.initialStatus || 'inbox'
         },
         []
     );
@@ -59,19 +103,30 @@ async function handleSubmit() {
 
             <div class="form-body">
 
-                <div v-if="!areaId" class="input-group">
+                <div v-if="!initialAreaId" class="input-group">
                     <label>Save to Folder <span class="required">*</span></label>
-                    <select v-model="selectedAreaId" class="full-width">
-                        <option value="" disabled>-- Select Folder --</option>
-                        <option v-for="area in areasStore.areas" :key="area.id" :value="area.id">
-                            {{ area.name }}
-                        </option>
-                    </select>
+
+                    <div class="combobox-wrapper" ref="comboboxRef">
+                        <input v-model="searchQuery" class="full-width search-input"
+                            placeholder="Type to search folders..." @focus="openDropdown"
+                            @input="isDropdownOpen = true" />
+                        <span class="arrow-indicator">▼</span>
+
+                        <div v-if="isDropdownOpen" class="dropdown-list">
+                            <div v-for="folder in filteredFolders" :key="folder.id" class="dropdown-item"
+                                :class="{ selected: selectedAreaId === folder.id }" @click="selectFolder(folder)">
+                                📂 {{ folder.name }}
+                            </div>
+                            <div v-if="filteredFolders.length === 0" class="empty-msg">
+                                No folders match.
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="input-group">
                     <label>Title <span class="required">*</span></label>
-                    <input v-model="title" placeholder="e.g. Notes from Biomass Conference" class="full-width" />
+                    <input v-model="title" placeholder="e.g. Draft Q3 Report" class="full-width" />
                 </div>
 
                 <div class="input-group">
@@ -173,6 +228,64 @@ h3 {
     border-radius: 4px;
     font-size: 1rem;
     box-sizing: border-box;
+}
+
+/* Combobox */
+.combobox-wrapper {
+    position: relative;
+}
+
+.search-input {
+    padding-right: 30px;
+}
+
+.arrow-indicator {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.8rem;
+    color: #999;
+    pointer-events: none;
+}
+
+.dropdown-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    max-height: 200px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    margin-top: 4px;
+}
+
+.dropdown-item {
+    padding: 10px;
+    cursor: pointer;
+    font-size: 0.95rem;
+    border-bottom: 1px solid #f9f9f9;
+}
+
+.dropdown-item:hover {
+    background: #f0f4f8;
+}
+
+.dropdown-item.selected {
+    background: #eafaf1;
+    color: #27ae60;
+    font-weight: bold;
+}
+
+.empty-msg {
+    padding: 1rem;
+    text-align: center;
+    color: #999;
+    font-style: italic;
 }
 
 .editor-wrapper {
