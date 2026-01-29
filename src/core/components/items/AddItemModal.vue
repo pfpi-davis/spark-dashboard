@@ -1,6 +1,8 @@
 <script setup lang="ts">
+// ... imports same as before ...
 import { ref, watch, computed, nextTick, onMounted, onUnmounted } from 'vue';
 import { useItemsStore } from '@/core/stores/items';
+import { useZoteroStore } from '@/core/stores/zotero';
 import RichEditor from '@/core/components/RichEditor.vue';
 import type { ActionStatus, SupportingLink } from '@/core/types/items';
 
@@ -13,26 +15,32 @@ const props = defineProps<{
 
 const emit = defineEmits(['close', 'saved']);
 const itemsStore = useItemsStore();
+const zoteroStore = useZoteroStore();
 
-// Form Data
+// ... (State definitions same as before) ...
 const title = ref('');
 const url = ref('');
 const content = ref('');
 const selectedAreaId = ref('');
-const links = ref<SupportingLink[]>([]); // NEW: Supporting Links
-
-// Search State
+const links = ref<SupportingLink[]>([]);
+const zoteroLink = ref<any>(null);
 const searchQuery = ref('');
 const isDropdownOpen = ref(false);
 const comboboxRef = ref<HTMLElement | null>(null);
+const showZoteroSearch = ref(false);
+const zQuery = ref('');
+let zDebounce: any = null;
 
-// Reset fields when opening
+// ... (Watchers and Filters same as before) ...
 watch(() => props.isOpen, (val) => {
     if (val) {
         title.value = '';
         url.value = '';
         content.value = '';
-        links.value = []; // Reset links
+        links.value = [];
+        zoteroLink.value = null;
+        showZoteroSearch.value = false;
+        zQuery.value = '';
 
         if (props.initialAreaId) {
             selectedAreaId.value = props.initialAreaId;
@@ -45,8 +53,6 @@ watch(() => props.isOpen, (val) => {
     }
 });
 
-// ... (Keep existing filteredFolders, selectFolder, openDropdown, handleClickOutside logic) ...
-// For brevity, assuming you keep the Search Logic from previous step here.
 const filteredFolders = computed(() => {
     const q = searchQuery.value.toLowerCase();
     return props.folders.filter(f => f.name.toLowerCase().includes(q));
@@ -71,18 +77,50 @@ function handleClickOutside(event: MouseEvent) {
 onMounted(() => document.addEventListener('click', handleClickOutside));
 onUnmounted(() => document.removeEventListener('click', handleClickOutside));
 
-// NEW: Link Management
-function addLink() {
-    links.value.push({ label: '', url: '' });
+function toggleZotero() {
+    if (!zoteroStore.apiKey) {
+        alert("Please configure your Zotero keys in an existing item's 'Z' menu first.");
+        return;
+    }
+    showZoteroSearch.value = !showZoteroSearch.value;
+    if (showZoteroSearch.value) nextTick(() => document.getElementById('zotero-search-input')?.focus());
 }
-function removeLink(index: number) {
-    links.value.splice(index, 1);
+
+function handleZoteroInput() {
+    if (zDebounce) clearTimeout(zDebounce);
+    zDebounce = setTimeout(() => {
+        if (zQuery.value.length > 2) zoteroStore.searchLibrary(zQuery.value);
+    }, 600);
 }
+
+function selectZoteroItem(res: any) {
+    title.value = res.title;
+    if (res.url) url.value = res.url;
+
+    let citationStr = res.citation;
+    if (!citationStr) {
+        const c = res.creators || 'Unknown';
+        const d = res.date || 'n.d.';
+        citationStr = `${c} (${d})`;
+    }
+
+    zoteroLink.value = {
+        key: res.key || "unknown",
+        title: res.title || "Untitled",
+        citation: citationStr,
+        libraryId: zoteroStore.userId || "",
+        url: res.url || null
+    };
+    showZoteroSearch.value = false;
+    zQuery.value = '';
+}
+
+function addLink() { links.value.push({ label: '', url: '' }); }
+function removeLink(index: number) { links.value.splice(index, 1); }
 
 async function handleSubmit() {
     if (!selectedAreaId.value || !title.value.trim()) return;
 
-    // Filter out empty links before saving
     const cleanLinks = links.value.filter(l => l.url.trim() !== '');
 
     await itemsStore.createItem(
@@ -90,10 +128,12 @@ async function handleSubmit() {
         {
             title: title.value,
             sourceUrl: url.value || null,
-            type: 'note',
+            // FIX: If Zotero link is present, type is PAPER
+            type: zoteroLink.value ? 'paper' : 'note',
             content: content.value,
             actionStatus: props.initialStatus || 'inbox',
-            supportingLinks: cleanLinks // Save links
+            supportingLinks: cleanLinks,
+            zotero: zoteroLink.value
         },
         []
     );
@@ -112,6 +152,28 @@ async function handleSubmit() {
             </header>
 
             <div class="form-body">
+                <div class="zotero-section">
+                    <div v-if="!zoteroLink" class="z-controls">
+                        <button class="z-btn" @click="toggleZotero">📚 Import from Zotero</button>
+                    </div>
+                    <div v-if="zoteroLink" class="z-linked-state">
+                        <span class="z-icon">✅</span>
+                        <span class="z-citation">{{ zoteroLink.citation }}</span>
+                        <button class="z-remove" @click="zoteroLink = null" title="Remove Link">×</button>
+                    </div>
+                    <div v-if="showZoteroSearch && !zoteroLink" class="z-search-area">
+                        <input id="zotero-search-input" v-model="zQuery" @input="handleZoteroInput"
+                            placeholder="Search your Zotero library..." class="full-width z-input" />
+                        <div v-if="zoteroStore.isLoading" class="z-loading">Searching cloud...</div>
+                        <div v-if="zoteroStore.searchResults.length > 0" class="z-results">
+                            <div v-for="res in zoteroStore.searchResults" :key="res.key" class="z-item"
+                                @click="selectZoteroItem(res)">
+                                <div class="z-title">{{ res.title }}</div>
+                                <div class="z-meta">{{ res.creators }} • {{ res.date }}</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div v-if="!initialAreaId" class="input-group">
                     <label>Save to Folder <span class="required">*</span></label>
@@ -121,9 +183,8 @@ async function handleSubmit() {
                             @input="isDropdownOpen = true" />
                         <div v-if="isDropdownOpen" class="dropdown-list">
                             <div v-for="folder in filteredFolders" :key="folder.id" class="dropdown-item"
-                                :class="{ selected: selectedAreaId === folder.id }" @click="selectFolder(folder)">
-                                📂 {{ folder.name }}
-                            </div>
+                                :class="{ selected: selectedAreaId === folder.id }" @click="selectFolder(folder)">📂 {{
+                                folder.name }}</div>
                         </div>
                     </div>
                 </div>
@@ -143,12 +204,11 @@ async function handleSubmit() {
                         <label>Supporting Links</label>
                         <button class="add-link-btn" @click="addLink">+ Add Link</button>
                     </div>
-
                     <div class="links-list">
                         <div v-for="(link, index) in links" :key="index" class="link-row">
-                            <input v-model="link.label" placeholder="Label (e.g. Metadata)" class="link-label" />
-                            <input v-model="link.url" placeholder="https://..." class="link-url" />
-                            <button class="remove-btn" @click="removeLink(index)" title="Remove">×</button>
+                            <input v-model="link.label" placeholder="Label" class="link-label" />
+                            <input v-model="link.url" placeholder="URL" class="link-url" />
+                            <button class="remove-btn" @click="removeLink(index)">×</button>
                         </div>
                     </div>
                 </div>
@@ -171,7 +231,7 @@ async function handleSubmit() {
 </template>
 
 <style scoped>
-/* Reuse existing styles plus new ones */
+/* Reuse existing styles */
 .modal-backdrop {
     position: fixed;
     top: 0;
@@ -250,7 +310,98 @@ h3 {
     box-sizing: border-box;
 }
 
-/* Combobox (Shortened for brevity - reuse from previous step) */
+.zotero-section {
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #eee;
+}
+
+.z-btn {
+    background: #eafaf1;
+    color: #27ae60;
+    border: 1px solid #abebc6;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+}
+
+.z-btn:hover {
+    background: #d4efdf;
+}
+
+.z-linked-state {
+    background: #eafaf1;
+    padding: 10px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid #abebc6;
+}
+
+.z-citation {
+    font-weight: bold;
+    color: #27ae60;
+    flex: 1;
+}
+
+.z-remove {
+    background: none;
+    border: none;
+    color: #e74c3c;
+    font-size: 1.2rem;
+    cursor: pointer;
+}
+
+.z-search-area {
+    margin-top: 0.5rem;
+    background: #f9f9f9;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #eee;
+}
+
+.z-input {
+    margin-bottom: 0.5rem;
+}
+
+.z-loading {
+    font-size: 0.8rem;
+    color: #888;
+    font-style: italic;
+}
+
+.z-results {
+    max-height: 150px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.z-item {
+    padding: 8px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+}
+
+.z-item:hover {
+    background: #f0f4f8;
+}
+
+.z-title {
+    font-weight: bold;
+    font-size: 0.9rem;
+}
+
+.z-meta {
+    font-size: 0.75rem;
+    color: #888;
+}
+
 .combobox-wrapper {
     position: relative;
 }
@@ -276,16 +427,11 @@ h3 {
     background: #f0f4f8;
 }
 
-/* NEW: Links Styles */
 .links-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 0.5rem;
-}
-
-.links-header label {
-    margin: 0;
 }
 
 .add-link-btn {
@@ -295,10 +441,6 @@ h3 {
     cursor: pointer;
     font-size: 0.8rem;
     font-weight: bold;
-}
-
-.add-link-btn:hover {
-    text-decoration: underline;
 }
 
 .links-list {

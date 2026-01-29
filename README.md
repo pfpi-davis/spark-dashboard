@@ -4,17 +4,7 @@
 
 ### Areas of Interest
 
-- Tags should be click to filter
-- Folders may need to go to an autocomplete instead of a plain dropdown in the Move modal
-- Items should be draggable to a new folder
-- Should be filterable by type (RSS, Note, Web, etc.)
-- Should be filterable by action (Inbox, Analyze, Share, Write)
-- Add Wiki link tag support to Notes
-
 ### Action Center
-
-- Add items from the command center
-- Items draggable from one to the other?
 
 ## Planned Features
 

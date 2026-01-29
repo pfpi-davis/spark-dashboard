@@ -7,15 +7,34 @@ const props = defineProps<{
     modelValue: string;
 }>();
 
-const emit = defineEmits(['update:modelValue']);
+const emit = defineEmits(['update:modelValue', 'drop-custom']);
 
 const editorRef = ref<HTMLElement | null>(null);
-let quillInstance: any = null; // Use 'any' to avoid TS conflicts with v1 vs v2 types
+let quillInstance: any = null;
+
+// Expose methods to parent (WriterMain)
+defineExpose({
+    insertHTML: (html: string) => {
+        if (quillInstance) {
+            // Focus first to ensure we have a valid range
+            quillInstance.focus();
+            const range = quillInstance.getSelection(true); // true = ignore focus
+            if (range) {
+                quillInstance.clipboard.dangerouslyPasteHTML(range.index, html, 'user');
+                quillInstance.setSelection(range.index + html.length);
+            } else {
+                // Fallback: Append to end if no selection found
+                const length = quillInstance.getLength();
+                quillInstance.clipboard.dangerouslyPasteHTML(length, html, 'user');
+            }
+        }
+    },
+    getQuill: () => quillInstance
+});
 
 onMounted(() => {
     if (!editorRef.value) return;
 
-    // 1. Initialize Quill manually
     quillInstance = new Quill(editorRef.value, {
         theme: 'snow',
         modules: {
@@ -24,30 +43,48 @@ onMounted(() => {
                 ['blockquote', 'code-block'],
                 [{ 'list': 'ordered' }, { 'list': 'bullet' }],
                 [{ 'header': [1, 2, 3, false] }],
-                ['clean']
+                ['link', 'clean']
             ]
         }
     });
 
-    // 2. Set Initial Content safely
     if (props.modelValue) {
-        // dangerouslyPasteHTML is the robust way to set content in Quill v1
         quillInstance.clipboard.dangerouslyPasteHTML(0, props.modelValue);
     }
 
-    // 3. Listen for changes
     quillInstance.on('text-change', () => {
         if (quillInstance) {
             const html = quillInstance.root.innerHTML;
             emit('update:modelValue', html === '<p><br></p>' ? '' : html);
         }
     });
+
+    // --- DRAG & DROP FIXES ---
+
+    // 1. MUST preventDefault on dragover to allow dropping
+    quillInstance.root.addEventListener('dragover', (e: DragEvent) => {
+        if (e.dataTransfer && e.dataTransfer.types.includes('application/spark-citation')) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'copy';
+        }
+    });
+
+    // 2. Handle the Drop
+    quillInstance.root.addEventListener('drop', (e: DragEvent) => {
+        if (e.dataTransfer && e.dataTransfer.types.includes('application/spark-citation')) {
+            e.preventDefault();
+            const data = e.dataTransfer.getData('application/spark-citation');
+            try {
+                emit('drop-custom', JSON.parse(data));
+            } catch (err) {
+                console.error("Failed to parse dropped data", err);
+            }
+        }
+    });
 });
 
-// 4. Handle external updates
 watch(() => props.modelValue, (newVal) => {
     if (quillInstance && newVal !== quillInstance.root.innerHTML) {
-        // Only update if content is different to prevent cursor jumps
         const currentContent = quillInstance.root.innerHTML;
         if (newVal !== currentContent) {
             quillInstance.clipboard.dangerouslyPasteHTML(0, newVal);
@@ -55,7 +92,6 @@ watch(() => props.modelValue, (newVal) => {
     }
 });
 
-// 5. Cleanup
 onBeforeUnmount(() => {
     quillInstance = null;
 });

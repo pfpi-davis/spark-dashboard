@@ -15,6 +15,7 @@ const store = useItemsStore();
 const title = ref('');
 const url = ref('');
 const content = ref('');
+const itemType = ref<string>('note'); // NEW: Type state
 const links = ref<SupportingLink[]>([]);
 
 watch(() => props.isOpen, (isOpen) => {
@@ -22,6 +23,7 @@ watch(() => props.isOpen, (isOpen) => {
         title.value = props.item.title;
         url.value = props.item.sourceUrl || '';
         content.value = (typeof props.item.content === 'string') ? props.item.content : '';
+        itemType.value = props.item.type; // Load existing type
         // Clone links so we don't mutate prop directly
         links.value = props.item.supportingLinks ? [...props.item.supportingLinks] : [];
     }
@@ -43,6 +45,7 @@ async function handleSave() {
         title: title.value,
         content: content.value,
         sourceUrl: url.value || null,
+        type: itemType.value as any, // Save the new type
         supportingLinks: cleanLinks
     });
 
@@ -60,6 +63,17 @@ async function handleSave() {
             </header>
 
             <div class="form-body">
+                <div class="input-group">
+                    <label>Type</label>
+                    <select v-model="itemType" class="full-width">
+                        <option value="note">Note</option>
+                        <option value="paper">Paper</option>
+                        <option value="web">Web</option>
+                        <option value="rss">RSS</option>
+                        <option value="spark">Spark</option>
+                    </select>
+                </div>
+
                 <div class="input-group">
                     <label>Title</label>
                     <input v-model="title" class="full-width" />

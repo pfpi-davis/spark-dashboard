@@ -13,8 +13,8 @@ import MoveItemModal from '@/core/components/items/MoveItemModal.vue';
 import EditContentModal from '@/core/components/items/EditContentModal.vue';
 import EditTagsModal from '@/core/components/items/EditTagsModal.vue';
 import ReaderModal from '@/core/components/ReaderModal.vue';
+import ZoteroLinkerModal from '@/domains/zotero/components/ZoteroLinkerModal.vue';
 
-// Modals (Local)
 import AreaFormModal from '../components/AreaFormModal.vue';
 
 const areasStore = useAreasStore();
@@ -25,6 +25,8 @@ const activeFilter = ref(''); // Tag Filter
 const searchQuery = ref('');
 const typeFilter = ref('');   // Type Filter
 const actionFilter = ref(''); // Action Filter
+const isZoteroModalOpen = ref(false);
+const itemToLink = ref<any>(null);
 
 // Dropdown States (Tag Menu)
 const isTagMenuOpen = ref(false);
@@ -56,6 +58,11 @@ onMounted(() => {
 onUnmounted(() => {
     document.removeEventListener('click', handleClickOutside);
 });
+
+function onZotero(item: any) {
+    itemToLink.value = item;
+    isZoteroModalOpen.value = true;
+}
 
 // --- HELPER FUNCTIONS ---
 function toggleTagMenu() {
@@ -159,6 +166,7 @@ const displayedTags = computed(() => !tagSearchQuery.value ? availableTags.value
 
                     <select v-model="typeFilter" class="filter-select">
                         <option value="">All Types</option>
+                        <option value="paper">Paper</option>
                         <option value="rss">RSS</option>
                         <option value="note">Note</option>
                         <option value="web">Web</option>
@@ -209,7 +217,8 @@ const displayedTags = computed(() => !tagSearchQuery.value ? availableTags.value
 
             <div class="items-grid">
                 <ItemCard v-for="item in filteredItems" :key="item.id" :item="item" @read="onRead"
-                    @edit-content="onEditContent" @move="onMove" @tag="onTag" @filter-tag="onFilterTag" />
+                    @edit-content="onEditContent" @move="onMove" @tag="onTag" @filter-tag="onFilterTag"
+                    @zotero="onZotero" />
 
                 <div v-if="filteredItems.length === 0" class="no-results">
                     <p>No items match your filters.</p>
@@ -239,9 +248,12 @@ const displayedTags = computed(() => !tagSearchQuery.value ? availableTags.value
 
     <AddItemModal :is-open="isAddItemModalOpen" :folders="areasStore.areas" :initial-area-id="areasStore.selectedAreaId"
         @saved="isAddItemModalOpen = false" @close="isAddItemModalOpen = false" />
+
+    <ZoteroLinkerModal :is-open="isZoteroModalOpen" :item="itemToLink" @close="isZoteroModalOpen = false" />
 </template>
 
 <style scoped>
+/* (Reuse styles from previous turn) */
 .areas-layout {
     display: flex;
     height: 100%;
@@ -360,7 +372,6 @@ const displayedTags = computed(() => !tagSearchQuery.value ? availableTags.value
     font-weight: bold;
 }
 
-/* Filter Dropdown */
 .filter-dropdown-wrapper {
     position: relative;
 }

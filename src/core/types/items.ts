@@ -2,17 +2,26 @@ export type ActionStatus = 'inbox' | 'to_analyze' | 'to_write' | 'to_share' | 'r
 
 export interface SupportingLink {
   url: string
-  label: string // e.g. "Metadata", "AP News Version"
+  label: string
+}
+
+export interface ZoteroLink {
+  key: string
+  title: string
+  citation: string
+  libraryId: string
+  url?: string
 }
 
 export interface SavedItem {
   id: string
   areaId: string
-  type: 'rss' | 'spark' | 'note' | 'web'
+  // FIX: Added 'paper' to the union type
+  type: 'rss' | 'spark' | 'note' | 'web' | 'paper'
   title: string
   sourceUrl?: string | null
-  // NEW field
   supportingLinks?: SupportingLink[]
+  zotero?: ZoteroLink | null
   content?: any
   savedAt: any
   tags?: string[]

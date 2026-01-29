@@ -13,7 +13,7 @@ const emit = defineEmits([
     'edit-content',
     'move',
     'tag',
-    'filter-tag' // NEW event
+    'filter-tag', 'zotero' // NEW event
 ]);
 
 const analysisStore = useAnalysisStore();
@@ -97,6 +97,10 @@ function onDragStart(event: DragEvent) {
             </div>
 
             <div class="secondary-actions">
+                <button class="action-btn zotero-btn" :class="{ active: item.zotero }" @click="emit('zotero', item)"
+                    title="Manage Zotero Link">
+                    {{ item.zotero ? '✅ Z' : 'Z' }}
+                </button>
                 <button class="action-btn" @click="emit('move', item)" title="Move">
                     📦 Move
                 </button>
@@ -268,5 +272,16 @@ h4 a {
 
 .delete:hover {
     background: #fadbd8;
+}
+
+.zotero-btn {
+    font-weight: bold;
+    color: #e74c3c;
+}
+
+.zotero-btn.active {
+    background: #e74c3c;
+    color: white;
+    border-color: #c0392b;
 }
 </style>
