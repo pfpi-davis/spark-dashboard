@@ -26,6 +26,10 @@ export const useItemsStore = defineStore('items', () => {
 
   // --- ACTIONS ---
 
+  /**
+   * 1. Create (Save Item)
+   * Handles creating a new item in a specific folder.
+   */
   async function createItem(
     areaId: string,
     item: Omit<SavedItem, 'id' | 'savedAt' | 'areaId'>,
@@ -33,6 +37,7 @@ export const useItemsStore = defineStore('items', () => {
   ) {
     if (!auth.user) return
 
+    // Sanitize rich text content
     let cleanContent = item.content
     if (typeof item.content === 'string') {
       cleanContent = DOMPurify.sanitize(item.content)
@@ -48,42 +53,65 @@ export const useItemsStore = defineStore('items', () => {
     })
   }
 
-  async function updateItemContent(itemId: string, newContent: string, newTitle?: string) {
+  /**
+   * 2. Update Details (Generic)
+   * Updates core properties: Title, Content, URL, Supporting Links.
+   * Replaces the old specific 'updateItemContent'.
+   */
+  async function updateItemDetails(itemId: string, updates: Partial<SavedItem>) {
     if (!auth.user) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
-    const cleanContent = DOMPurify.sanitize(newContent)
-    const updates: any = { content: cleanContent }
-    if (newTitle) updates.title = newTitle
+
+    // Sanitize if content is being updated
+    if (updates.content && typeof updates.content === 'string') {
+      updates.content = DOMPurify.sanitize(updates.content)
+    }
+
     await updateDoc(itemRef, updates)
   }
 
+  /**
+   * 3. Update Status (Action Center)
+   * Moves item between Inbox -> Analyze -> Write -> Share -> Reference
+   */
   async function updateItemStatus(itemId: string, status: ActionStatus) {
     if (!auth.user) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
     await updateDoc(itemRef, { actionStatus: status })
   }
 
+  /**
+   * 4. Update Tags
+   */
   async function updateItemTags(itemId: string, newTags: string[]) {
     if (!auth.user) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
     await updateDoc(itemRef, { tags: newTags })
   }
 
+  /**
+   * 5. Move Item (Folder Change)
+   */
   async function moveItem(itemId: string, newAreaId: string) {
     if (!auth.user) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
     await updateDoc(itemRef, { areaId: newAreaId })
   }
 
+  /**
+   * 6. Delete Item
+   */
   async function deleteItem(itemId: string) {
     if (!auth.user || !confirm('Remove this saved item?')) return
     const itemRef = doc(db, 'users', auth.user.uid, 'saved_items', itemId)
     await deleteDoc(itemRef)
   }
 
-  // --- FETCHING ---
+  // --- FETCHING / SUBSCRIPTIONS ---
 
-  // For Areas View: Get items in specific folder
+  /**
+   * Fetch items by Folder (For Areas View)
+   */
   function fetchByArea(areaId: string) {
     if (!auth.user) return
     if (unsubscribe) unsubscribe()
@@ -100,7 +128,9 @@ export const useItemsStore = defineStore('items', () => {
     })
   }
 
-  // For Action Center: Get ALL items
+  /**
+   * Fetch ALL items (For Action Center / Global View)
+   */
   function fetchAll() {
     if (!auth.user) return
     if (unsubscribe) unsubscribe()
@@ -117,7 +147,7 @@ export const useItemsStore = defineStore('items', () => {
   return {
     items,
     createItem,
-    updateItemContent,
+    updateItemDetails,
     updateItemStatus,
     updateItemTags,
     moveItem,

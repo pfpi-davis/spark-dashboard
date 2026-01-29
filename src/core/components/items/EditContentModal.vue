@@ -1,33 +1,56 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
-import { useItemsStore } from '@/core/stores/items'; // <--- NEW STORE
+import { useItemsStore } from '@/core/stores/items';
 import RichEditor from '@/core/components/RichEditor.vue';
+import type { SavedItem, SupportingLink } from '@/core/types/items';
 
 const props = defineProps<{
     isOpen: boolean;
-    item: { id: string, title: string, content: string } | null;
+    item: SavedItem | null;
 }>();
 
 const emit = defineEmits(['close', 'saved']);
-const store = useItemsStore(); // <--- Use itemsStore
+const store = useItemsStore();
 
-const titleInput = ref('');
-const contentInput = ref('');
+const title = ref('');
+const url = ref('');
+const content = ref('');
+const links = ref<SupportingLink[]>([]);
 
 watch(() => props.isOpen, (isOpen) => {
     if (isOpen && props.item) {
-        titleInput.value = props.item.title;
-        contentInput.value = (typeof props.item.content === 'string') ? props.item.content : '';
+        title.value = props.item.title;
+        url.value = props.item.sourceUrl || '';
+        content.value = (typeof props.item.content === 'string') ? props.item.content : '';
+        // Clone links so we don't mutate prop directly
+        links.value = props.item.supportingLinks ? [...props.item.supportingLinks] : [];
     }
 });
 
+function addLink() {
+    links.value.push({ label: '', url: '' });
+}
+function removeLink(index: number) {
+    links.value.splice(index, 1);
+}
+
 async function handleSave() {
     if (!props.item) return;
-    await store.updateItemContent(props.item.id, contentInput.value, titleInput.value);
+
+    const cleanLinks = links.value.filter(l => l.url.trim() !== '');
+
+    await store.updateItemDetails(props.item.id, {
+        title: title.value,
+        content: content.value,
+        sourceUrl: url.value || null,
+        supportingLinks: cleanLinks
+    });
+
     emit('saved');
     emit('close');
 }
 </script>
+
 <template>
     <div v-if="isOpen" class="modal-backdrop" @click.self="emit('close')">
         <div class="modal-content">
@@ -39,13 +62,32 @@ async function handleSave() {
             <div class="form-body">
                 <div class="input-group">
                     <label>Title</label>
-                    <input v-model="titleInput" placeholder="Item Title" class="title-input" />
+                    <input v-model="title" class="full-width" />
+                </div>
+
+                <div class="input-group">
+                    <label>Primary URL</label>
+                    <input v-model="url" class="full-width" />
+                </div>
+
+                <div class="input-group">
+                    <div class="links-header">
+                        <label>Supporting Links</label>
+                        <button class="add-link-btn" @click="addLink">+ Add</button>
+                    </div>
+                    <div class="links-list">
+                        <div v-for="(link, index) in links" :key="index" class="link-row">
+                            <input v-model="link.label" placeholder="Label" class="link-label" />
+                            <input v-model="link.url" placeholder="URL" class="link-url" />
+                            <button class="remove-btn" @click="removeLink(index)">×</button>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="editor-wrapper">
                     <label>Content</label>
                     <div class="quill-container">
-                        <RichEditor v-if="item" :key="item.id" v-model="contentInput" />
+                        <RichEditor v-if="item" :key="item.id" v-model="content" />
                     </div>
                 </div>
             </div>
@@ -59,7 +101,7 @@ async function handleSave() {
 </template>
 
 <style scoped>
-/* Reuse styles from previous file content */
+/* Reuse styles from AddItemModal for consistency */
 .modal-backdrop {
     position: fixed;
     top: 0;
@@ -117,8 +159,7 @@ h3 {
     margin-bottom: 1rem;
 }
 
-.input-group label,
-.editor-wrapper label {
+.input-group label {
     display: block;
     font-weight: bold;
     font-size: 0.85rem;
@@ -126,13 +167,63 @@ h3 {
     margin-bottom: 0.5rem;
 }
 
-.title-input {
+.full-width {
     width: 100%;
     padding: 10px;
     border: 1px solid #ddd;
     border-radius: 4px;
     font-size: 1rem;
     box-sizing: border-box;
+}
+
+.links-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.add-link-btn {
+    background: none;
+    border: none;
+    color: #3498db;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.links-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.link-row {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.link-label {
+    width: 30%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.link-url {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.remove-btn {
+    background: none;
+    border: none;
+    color: #e74c3c;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 0.5rem;
 }
 
 .editor-wrapper {
