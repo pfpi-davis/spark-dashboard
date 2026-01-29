@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { useItemsStore } from '@/core/stores/items'; // <--- NEW STORE
+import { ref, onMounted, onUnmounted } from 'vue';
+import { useItemsStore } from '@/core/stores/items'; // <--- FIXED: Use Core Store
 import type { SavedItem, ActionStatus } from '@/core/types/items';
 
 const props = defineProps<{
     item: SavedItem;
 }>();
 
-const store = useItemsStore(); // <--- Use itemsStore
+const store = useItemsStore(); // <--- FIXED
 const isOpen = ref(false);
+const containerRef = ref<HTMLElement | null>(null); // <--- Reference for click-outside logic
 
 const labels: Record<string, string> = {
     inbox: '📥 Inbox',
@@ -26,11 +27,27 @@ function setStatus(status: ActionStatus) {
 function toggle() {
     isOpen.value = !isOpen.value;
 }
+
+// FIX: Robust "Click Outside" handler instead of flaky @mouseleave
+function handleClickOutside(event: MouseEvent) {
+    if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
+        isOpen.value = false;
+    }
+}
+
+onMounted(() => {
+    document.addEventListener('click', handleClickOutside);
+});
+
+onUnmounted(() => {
+    document.removeEventListener('click', handleClickOutside);
+});
 </script>
 
 <template>
-    <div class="action-picker" @mouseleave="isOpen = false">
-        <button class="trigger-btn" :class="item.actionStatus || 'inbox'" @click="toggle" title="Set Workflow Status">
+    <div class="action-picker" ref="containerRef">
+        <button class="trigger-btn" :class="item.actionStatus || 'inbox'" @click.stop="toggle"
+            title="Set Workflow Status">
             {{ labels[item.actionStatus || 'inbox'] }} ▼
         </button>
 
@@ -70,6 +87,7 @@ function toggle() {
     border-color: #bbb;
 }
 
+/* Status Highlights */
 .trigger-btn.to_analyze {
     border-color: #f1c40f;
     color: #d35400;
