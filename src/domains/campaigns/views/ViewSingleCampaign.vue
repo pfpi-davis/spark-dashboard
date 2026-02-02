@@ -32,9 +32,9 @@ function removeGoalLine(index: number) {
     store.updateGoals(campaign.value.id, campaign.value.goals.narrative, items);
 }
 
-function onNarrativeChange(html: string) {
+function onNarrativeChange(val: string) {
     if (!campaign.value) return;
-    store.updateGoals(campaign.value.id, html, campaign.value.goals.lineItems);
+    store.updateGoals(campaign.value.id, val, campaign.value.goals.lineItems);
 }
 
 // --- LINKED ITEMS HANDLERS ---
@@ -64,11 +64,16 @@ async function removeLink(itemId: string) {
 
 <template>
     <div v-if="campaign" class="campaign-detail">
+        <div class="top-header">
+            <h1>{{ campaign.title }}</h1>
+            <textarea class="narrative-input" :value="campaign.goals.narrative"
+                @change="e => onNarrativeChange((e.target as HTMLTextAreaElement).value)"
+                placeholder="Campaign narrative..."></textarea>
+        </div>
         <div class="sticky-grid-header">
             <div class="grid-card goals-card">
                 <h3>Project Goals</h3>
                 <div class="goals-editor">
-                    <RichEditor :modelValue="campaign.goals.narrative" @update:modelValue="onNarrativeChange" />
                     <div class="line-items-section">
                         <ol class="goals-list">
                             <li v-for="(item, idx) in campaign.goals.lineItems" :key="idx">
@@ -244,9 +249,55 @@ h3 {
     align-items: center;
 }
 
-/* Card 1: Project Goals */
+.top-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    gap: 2rem;
+}
+
+.top-header h1 {
+    margin: 0;
+    font-size: 2rem;
+    color: #111827;
+}
+
+.narrative-input {
+    flex: 0 0 50%;
+    padding: 10px 12px;
+    margin-bottom: 24px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-family: inherit;
+    /* Ensures it matches the app font, not system mono */
+    font-size: 0.9rem;
+    line-height: 1.4;
+    resize: vertical;
+    /* Allows vertical resizing only */
+    min-height: 42px;
+    /* height of roughly 2 lines */
+    max-height: 120px;
+    background: #ffffff;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.narrative-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.line-items-section {
+    border-top: none;
+    /* Removed border since it's now the top element */
+    padding-top: 0;
+}
+
+/* Update goals-card to remove unneeded height since Editor is gone */
 .goals-card {
-    max-height: 450px;
+    min-height: auto;
+    max-height: none;
 }
 
 .goals-editor {
@@ -256,10 +307,6 @@ h3 {
     overflow-y: auto;
 }
 
-.line-items-section {
-    border-top: 1px solid #f3f4f6;
-    padding-top: 1rem;
-}
 
 .goals-list {
     padding-left: 1.2rem;
