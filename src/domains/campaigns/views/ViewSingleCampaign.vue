@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useCampaignStore } from '../store';
 import TagManager from '@/core/components/TagManager.vue';
-import RichEditor from '@/core/components/RichEditor.vue';
 import LinkItemModal from '../components/LinkItemModal.vue';
 
 const route = useRoute();
+const router = useRouter();
+
 const store = useCampaignStore();
 const campaign = computed(() => store.campaigns.find(c => c.id === route.params.id));
 
@@ -17,6 +18,18 @@ onMounted(() => {
     store.fetchCampaigns();
 });
 
+async function toggleArchive() {
+    if (!campaign.value) return;
+    const willArchive = !campaign.value.isArchived;
+
+    await store.toggleArchive(campaign.value.id, campaign.value.isArchived);
+
+    // Redirect to list view if we just archived it
+    if (willArchive) {
+        router.push('/campaigns');
+    }
+}
+
 // --- PROJECT GOALS HANDLERS ---
 function addGoalLine() {
     if (!campaign.value || !newLineItem.value.trim()) return;
@@ -24,6 +37,8 @@ function addGoalLine() {
     store.updateGoals(campaign.value.id, campaign.value.goals.narrative, items);
     newLineItem.value = '';
 }
+
+
 
 function removeGoalLine(index: number) {
     if (!campaign.value) return;
@@ -65,7 +80,12 @@ async function removeLink(itemId: string) {
 <template>
     <div v-if="campaign" class="campaign-detail">
         <div class="top-header">
-            <h1>{{ campaign.title }}</h1>
+            <div class="header-title-block">
+                <h1>{{ campaign.title }}</h1>
+                <button class="archive-text-btn" @click="toggleArchive">
+                    {{ campaign.isArchived ? 'Restore Campaign' : 'Archive Campaign' }}
+                </button>
+            </div>
             <textarea class="narrative-input" :value="campaign.goals.narrative"
                 @change="e => onNarrativeChange((e.target as HTMLTextAreaElement).value)"
                 placeholder="Campaign narrative..."></textarea>
@@ -141,6 +161,28 @@ async function removeLink(itemId: string) {
 </template>
 
 <style scoped>
+.header-title-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: flex-start;
+}
+
+.archive-text-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: #9ca3af;
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: underline;
+    transition: color 0.2s;
+}
+
+.archive-text-btn:hover {
+    color: #ef4444;
+}
+
 /* Main Layout */
 .campaign-detail {
     padding: 2rem;

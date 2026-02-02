@@ -22,4 +22,5 @@ export interface Campaign {
   linkedItems: LinkedItem[]
   createdAt: any
   updatedAt: any
+  isArchived: boolean
 }

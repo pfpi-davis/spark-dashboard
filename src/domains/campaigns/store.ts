@@ -21,6 +21,7 @@ export const useCampaignStore = defineStore('campaigns', () => {
   const campaigns = ref<Campaign[]>([])
   const searchQuery = ref('')
   const selectedTags = ref<string[]>([])
+  const showArchived = ref(false)
   let unsubscribe: Unsubscribe | null = null
 
   const filteredCampaigns = computed(() => {
@@ -28,7 +29,8 @@ export const useCampaignStore = defineStore('campaigns', () => {
       const matchesName = c.title.toLowerCase().includes(searchQuery.value.toLowerCase())
       const matchesTags =
         selectedTags.value.length === 0 || selectedTags.value.every((t) => c.tags.includes(t))
-      return matchesName && matchesTags
+      const matchesArchive = showArchived.value ? true : !c.isArchived
+      return matchesName && matchesTags && matchesArchive
     })
   })
 
@@ -42,8 +44,14 @@ export const useCampaignStore = defineStore('campaigns', () => {
       linkedItems: [],
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
+      isArchived: false,
     })
     return docRef.id
+  }
+
+  async function toggleArchive(id: string, currentStatus: boolean) {
+    // We toggle the current status (true -> false, false -> true)
+    await updateCampaign(id, { isArchived: !currentStatus })
   }
 
   async function updateCampaign(id: string, updates: Partial<Campaign>) {
@@ -61,7 +69,14 @@ export const useCampaignStore = defineStore('campaigns', () => {
 
     const q = query(collection(db, 'users', auth.user.uid, 'campaigns'))
     unsubscribe = onSnapshot(q, (snap) => {
-      campaigns.value = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Campaign)
+      campaigns.value = snap.docs.map(
+        (d) =>
+          ({
+            id: d.id,
+            ...d.data(),
+            isArchived: d.data().isArchived || false,
+          }) as Campaign,
+      )
     })
   }
 
@@ -101,5 +116,7 @@ export const useCampaignStore = defineStore('campaigns', () => {
     updateImportantDate,
     removeImportantDate,
     updateGoals,
+    showArchived,
+    toggleArchive,
   }
 })

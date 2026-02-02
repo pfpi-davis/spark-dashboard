@@ -49,6 +49,10 @@ function toggleTag(tag: string) {
 
             <div class="filter-section">
                 <input v-model="store.searchQuery" placeholder="Search campaigns..." class="search-input" />
+                <label class="archive-toggle">
+                    <input type="checkbox" v-model="store.showArchived" />
+                    <span>Show Archived</span>
+                </label>
                 <div class="tag-filters">
                     <button v-for="tag in itemsStore.allUniqueTags" :key="tag"
                         :class="{ active: store.selectedTags.includes(tag) }" @click="toggleTag(tag)"
@@ -61,7 +65,7 @@ function toggleTag(tag: string) {
 
         <div class="campaign-grid">
             <div v-for="campaign in store.filteredCampaigns" :key="campaign.id" class="campaign-mini-card"
-                @click="router.push(`/campaigns/${campaign.id}`)">
+                :class="{ 'is-archived': campaign.isArchived }" @click="router.push(`/campaigns/${campaign.id}`)">
                 <div class="mini-main">
                     <h4>{{ campaign.title }}</h4>
                     <div class="mini-narrative" v-html="campaign.goals.narrative"></div>
@@ -84,6 +88,18 @@ function toggleTag(tag: string) {
         </div>
 
     </div>
+
+    <div v-if="isCreateModalOpen" class="modal-overlay" @click.self="isCreateModalOpen = false">
+        <div class="modal-content">
+            <h3>Start New Campaign</h3>
+            <input v-model="newCampaignTitle" placeholder="Enter campaign title..." class="modal-input"
+                @keyup.enter="handleCreate" autofocus />
+            <div class="modal-actions">
+                <button class="cancel-btn" @click="isCreateModalOpen = false">Cancel</button>
+                <button class="primary-btn" @click="handleCreate" :disabled="!newCampaignTitle">Create Project</button>
+            </div>
+        </div>
+    </div>
 </template>
 
 <style scoped>
@@ -97,11 +113,105 @@ function toggleTag(tag: string) {
     margin-bottom: 2rem;
 }
 
+/* Modal Styles */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.modal-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 12px;
+    width: 100%;
+    max-width: 400px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.modal-content h3 {
+    margin-top: 0;
+    margin-bottom: 1.5rem;
+    color: #111827;
+}
+
+.modal-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 1rem;
+    margin-bottom: 1.5rem;
+    box-sizing: border-box;
+    /* Ensures padding doesn't break width */
+}
+
+.modal-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+.cancel-btn {
+    background: transparent;
+    border: none;
+    color: #6b7280;
+    cursor: pointer;
+    font-weight: 500;
+    padding: 8px 16px;
+}
+
+.cancel-btn:hover {
+    color: #374151;
+    background: #f3f4f6;
+    border-radius: 6px;
+}
+
 .header-main {
     display: flex;
     justify-content: space-between;
     align-items: center;
     margin-bottom: 1.5rem;
+}
+
+.archive-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #555;
+    cursor: pointer;
+    user-select: none;
+    padding-right: 1rem;
+    border-right: 1px solid #ddd;
+    /* Separator between toggle and tags */
+}
+
+.campaign-mini-card.is-archived {
+    opacity: 0.6;
+    background-color: #f9f9f9;
+    border-style: dashed;
+}
+
+.archive-toggle input {
+    cursor: pointer;
+    accent-color: #3498db;
+    /* Matches your primary button color */
+    width: 16px;
+    height: 16px;
 }
 
 .filter-section {
@@ -182,6 +292,7 @@ function toggleTag(tag: string) {
     color: #666;
     display: -webkit-box;
     -webkit-line-clamp: 3;
+    line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
     line-height: 1.4;
