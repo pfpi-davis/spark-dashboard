@@ -34,6 +34,16 @@ export const useCampaignStore = defineStore('campaigns', () => {
     })
   })
 
+  const allCampaignTags = computed(() => {
+    const uniqueTags = new Set<string>()
+    campaigns.value.forEach((campaign) => {
+      if (Array.isArray(campaign.tags)) {
+        campaign.tags.forEach((tag) => uniqueTags.add(tag))
+      }
+    })
+    return Array.from(uniqueTags).sort()
+  })
+
   async function createCampaign(title: string) {
     if (!auth.user) return
     const docRef = await addDoc(collection(db, 'users', auth.user.uid, 'campaigns'), {
@@ -118,5 +128,6 @@ export const useCampaignStore = defineStore('campaigns', () => {
     updateGoals,
     showArchived,
     toggleArchive,
+    allCampaignTags,
   }
 })

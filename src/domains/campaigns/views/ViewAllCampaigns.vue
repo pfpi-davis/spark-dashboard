@@ -54,7 +54,7 @@ function toggleTag(tag: string) {
                     <span>Show Archived</span>
                 </label>
                 <div class="tag-filters">
-                    <button v-for="tag in itemsStore.allUniqueTags" :key="tag"
+                    <button v-for="tag in store.allCampaignTags" :key="tag"
                         :class="{ active: store.selectedTags.includes(tag) }" @click="toggleTag(tag)"
                         class="filter-tag">
                         {{ tag }}
