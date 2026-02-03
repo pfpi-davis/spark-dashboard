@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { onMounted, ref } from 'vue';
 import { useCampaignStore } from '../store';
 import { useItemsStore } from '@/core/stores/items';
 import { useRouter } from 'vue-router';
@@ -35,11 +35,16 @@ function getNextDate(campaign: any) {
                 <h2>Active Campaigns</h2>
             </div>
 
-            <div class="widget-filters">
-                <span class="filter-label">Filter by Tag:</span>
-                <div class="tag-chips">
-                    <button v-for="tag in itemsStore.allUniqueTags" :key="tag"
-                        :class="{ active: store.selectedTags.includes(tag) }" @click="toggleTag(tag)">
+            <div class="filter-section">
+                <input v-model="store.searchQuery" placeholder="Search campaigns..." class="search-input" />
+                <label class="archive-toggle">
+                    <input type="checkbox" v-model="store.showArchived" />
+                    <span>Show Archived</span>
+                </label>
+                <div class="tag-filters">
+                    <button v-for="tag in store.allCampaignTags" :key="tag"
+                        :class="{ active: store.selectedTags.includes(tag) }" @click="toggleTag(tag)"
+                        class="filter-tag">
                         {{ tag }}
                     </button>
                 </div>
@@ -175,6 +180,7 @@ function getNextDate(campaign: any) {
     color: #666;
     display: -webkit-box;
     -webkit-line-clamp: 2;
+    line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
@@ -224,5 +230,52 @@ function getNextDate(campaign: any) {
     padding: 2rem;
     color: #999;
     font-style: italic;
+}
+
+.archive-toggle input {
+    cursor: pointer;
+    accent-color: #3498db;
+    /* Matches your primary button color */
+    width: 16px;
+    height: 16px;
+}
+
+.filter-section {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    background: #f9fafb;
+    padding: 1rem;
+    border-radius: 8px;
+    border: 1px solid #eee;
+}
+
+.search-input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    width: 250px;
+}
+
+.tag-filters {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.filter-tag {
+    padding: 4px 10px;
+    border-radius: 12px;
+    border: 1px solid #ddd;
+    background: white;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.2s;
+}
+
+.filter-tag.active {
+    background: #3498db;
+    color: white;
+    border-color: #3498db;
 }
 </style>
