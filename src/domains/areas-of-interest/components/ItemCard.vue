@@ -20,6 +20,8 @@ const analysisStore = useAnalysisStore();
 const itemsStore = useItemsStore();
 
 function hasReadableContent(item: SavedItem) {
+    // Social posts have content we display on card, so 'read' button is redundant
+    if (item.type === 'social') return false;
     return item.type === 'note' || (item.content && typeof item.content === 'string');
 }
 
@@ -40,6 +42,8 @@ function onDragStart(event: DragEvent) {
         event.dataTransfer.setData('application/json', JSON.stringify({ itemId: props.item.id }));
     }
 }
+
+
 </script>
 
 <template>
@@ -61,6 +65,13 @@ function onDragStart(event: DragEvent) {
 
         <div class="item-meta">
             Saved: {{ item.savedAt?.toDate().toLocaleDateString() }}
+        </div>
+
+        <div v-if="item.type === 'social'" class="social-preview">
+            {{ item.content }}
+            <div v-if="item.imageUrl" class="card-image">
+                <img :src="item.imageUrl" />
+            </div>
         </div>
 
         <div v-if="item.type === 'spark'" class="spark-preview">
@@ -283,5 +294,47 @@ h4 a {
     background: #e74c3c;
     color: white;
     border-color: #c0392b;
+}
+
+.social-preview {
+    margin-top: 0.5rem;
+    font-size: 0.95rem;
+    color: #333;
+    background: #f0f8ff;
+    /* Light blue/gray context */
+    padding: 0.75rem;
+    border-radius: 6px;
+    border-left: 3px solid #3498db;
+    font-style: italic;
+    white-space: pre-wrap;
+    line-height: 1.4;
+}
+
+.card-image {
+    margin-bottom: 0.5rem;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 18px;
+    /* 1. Cap the height so it doesn't dominate the screen */
+    max-height: 300px;
+
+    /* 2. Center the image if it's narrower than the card */
+    display: flex;
+    justify-content: center;
+    background: #f8f9fa;
+    /* Light background for "letterboxed" space */
+}
+
+.card-image img {
+    /* 3. Constrain dimensions to the parent container */
+    max-width: 100%;
+    max-height: 100%;
+
+    /* 4. Allow natural aspect ratio */
+    width: auto;
+    height: auto;
+
+    /* 5. Ensure the WHOLE image is visible */
+    object-fit: contain;
 }
 </style>

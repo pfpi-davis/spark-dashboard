@@ -30,14 +30,36 @@ const auth = useAuthStore(); // <--- Check this
                     Dashboard
                 </router-link>
 
-                <div class="nav-divider">Plugins</div>
+                <div class="nav-divider">Assess</div>
 
-                <template v-for="plugin in activePlugins" :key="plugin.manifest.id">
-                    <router-link v-if="plugin.routes.length > 0" :to="'/' + plugin.routes[0]?.path.replace(/^\//, '')"
-                        class="nav-item">
-                        {{ plugin.manifest.name }}
-                    </router-link>
-                </template>
+                <router-link to="/feeds" class="nav-item">
+                    News Wire
+                </router-link>
+
+                <router-link to="/social" class="nav-item">
+                    <span class="label">Social Monitor</span>
+                </router-link>
+
+
+                <div class="nav-divider">Arrange</div>
+
+                <router-link to="/areas" class="nav-item">
+                    Areas of Interest
+                </router-link>
+                <router-link to="/campaigns" class="nav-item">
+                    Campaigns
+                </router-link>
+
+                <div class="nav-divider">Act</div>
+
+                <router-link to="/actions" class="nav-item">
+                    Action Center
+                </router-link>
+
+                <router-link to="/writer" class="nav-item">
+                    Notes / Writer
+                </router-link>
+
             </nav>
         </aside>
 

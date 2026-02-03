@@ -17,9 +17,10 @@ export interface SavedItem {
   id: string
   areaId: string
   // FIX: Added 'paper' to the union type
-  type: 'rss' | 'spark' | 'note' | 'web' | 'paper'
+  type: 'rss' | 'spark' | 'note' | 'web' | 'paper' | 'social' | string
   title: string
   sourceUrl?: string | null
+  imageUrl?: string | null
   supportingLinks?: SupportingLink[]
   zotero?: ZoteroLink | null
   content?: any

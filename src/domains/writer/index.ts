@@ -1,5 +1,6 @@
 import type { SparkPlugin } from '@/core/types/plugin'
 import WriterMain from './views/WriterMain.vue'
+import WriterWidget from './components/WriterWidget.vue'
 
 const WriterPlugin: SparkPlugin = {
   manifest: {
@@ -10,6 +11,7 @@ const WriterPlugin: SparkPlugin = {
   },
   components: {
     mainView: WriterMain,
+    dashboardWidget: WriterWidget,
     // We can add a dashboardWidget here later if we build one
   },
   routes: [

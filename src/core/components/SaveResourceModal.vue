@@ -5,7 +5,8 @@ import { useItemsStore } from '@/core/stores/items'; // <--- NEW STORE
 
 const props = defineProps<{
     isOpen: boolean;
-    itemData: { title: string; type: string; content: any; sourceUrl?: string } | null;
+    // Add imageUrl to the type definition here
+    itemData: { title: string; type: string; content: any; sourceUrl?: string; imageUrl?: string } | null;
 }>();
 
 const emit = defineEmits(['close', 'saved']);
@@ -28,7 +29,8 @@ async function handleSave() {
             title: props.itemData.title,
             type: props.itemData.type as any,
             content: props.itemData.content,
-            sourceUrl: props.itemData.sourceUrl
+            sourceUrl: props.itemData.sourceUrl,
+            imageUrl: props.itemData.imageUrl // <--- Pass it to store
         },
         tags
     );
